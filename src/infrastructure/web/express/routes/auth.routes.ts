@@ -1,42 +1,33 @@
 // src/infrastructure/web/express/routes/auth.routes.ts
-import { Router, Request, Response } from 'express';
-// import AuthController from '../controllers/auth.controller'; // TODO: Реализовать контроллер
-// import { validate } from '../middlewares/validation.middleware'; // TODO: Реализовать валидацию
-// import { registerUserSchema, loginUserSchema } from '../../../../application/dtos/auth'; // TODO: Определить схемы DTO
+import { Router } from 'express';
+import { AuthController } from '../controllers/auth.controller';
+// TODO: import { authMiddleware } from '../middlewares/auth.middleware';
+// TODO: import { validationMiddleware } from '../middlewares/validation.middleware';
+// TODO: import { RegisterUserDto } from '../../../../application/dtos/auth/register-user.dto';
+// TODO: import { LoginUserDto } from '../../../../application/dtos/auth/login-user.dto';
 
 const router = Router();
-// const authController = new AuthController(); // TODO: Инстанцировать контроллер (лучше через DI)
+const authController = new AuthController(); // Создаем экземпляр контроллера
 
-// Placeholder - Заменить на вызовы методов контроллера
+// POST /api/v1/auth/register
 router.post(
     '/register',
-    /* validate(registerUserSchema), authController.register */ (
-        _req: Request,
-        res: Response,
-    ) => {
-        res.status(501).json({ message: 'Register Not Implemented' });
-    },
+    // TODO: Добавить validationMiddleware(RegisterUserDto)
+    authController.register, // Связываем с методом контроллера
 );
 
+// POST /api/v1/auth/login
 router.post(
     '/login',
-    /* validate(loginUserSchema), authController.login */ (
-        _req: Request,
-        res: Response,
-    ) => {
-        res.status(501).json({ message: 'Login Not Implemented' });
-    },
+    // TODO: Добавить validationMiddleware(LoginUserDto)
+    authController.login, // Связываем с методом контроллера
 );
 
-// TODO: Добавить middleware аутентификации для /me
+// GET /api/v1/auth/me
 router.get(
     '/me',
-    /* authMiddleware, authController.getMe */ (
-        _req: Request,
-        res: Response,
-    ) => {
-        res.status(501).json({ message: 'Get Me Not Implemented' });
-    },
+    // TODO: Добавить authMiddleware
+    authController.getMe, // Связываем с методом контроллера
 );
 
 export default router;

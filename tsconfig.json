@@ -31,7 +31,10 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "useDefineForClassFields": true,
-    "typeRoots": ["types", "./node_modules/@types"]
+    "typeRoots": ["types", "./node_modules/@types"],
+    // DI
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
   },
   "include": ["src", "types"],
   "exclude": ["node_modules", "dist"]
