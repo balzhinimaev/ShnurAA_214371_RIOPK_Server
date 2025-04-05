@@ -8,3 +8,5 @@ combined.log
 hostPath.zip
 src/logs/combined.log
 ./src/logs/combined.log
+/uploads
+*.log

@@ -1,6 +1,6 @@
 // src/infrastructure/di/container.config.ts
 import { container } from 'tsyringe';
-
+import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
 // Импортируем токены (интерфейсы) из Domain и Application
 import {
     UserRepositoryToken,
@@ -70,6 +70,10 @@ container.register<RegisterUserUseCase>(RegisterUserUseCase, {
 container.register<LoginUserUseCase>(LoginUserUseCase, {
     useClass: LoginUserUseCase,
 });
+
+// ... Auth Use Cases ...
+container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, { useClass: GetDashboardSummaryUseCase });
+container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, { useClass: ProcessInvoiceUploadUseCase });
 
 // --- Регистрация Controllers (будет добавлено позже) ---
 // Пример:
