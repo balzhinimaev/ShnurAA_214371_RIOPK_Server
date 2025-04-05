@@ -1,0 +1,10 @@
+/logs
+node_modules
+.env
+./src/logs
+src/logs
+src/logs*
+combined.log
+hostPath.zip
+src/logs/combined.log
+./src/logs/combined.log
