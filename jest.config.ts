@@ -34,7 +34,7 @@ const config: Config = {
     },
     // Если ваш setup файл тоже на TS, используйте .ts расширение
     // setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-    setupFilesAfterEnv: ['<rootDir>/jest.setup.js'], // Оставляем .js, если файл не переименован
+    setupFilesAfterEnv: ['<rootDir>/jest.setup.js', 'reflect-metadata'], // Оставляем .js, если файл не переименован
 };
 
 export default config; // Используем export default
