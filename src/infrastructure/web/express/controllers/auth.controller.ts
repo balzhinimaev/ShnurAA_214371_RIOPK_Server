@@ -7,6 +7,9 @@ import { RegisterUserDto } from '../../../../application/dtos/auth/register-user
 import { LoginUserDto } from '../../../../application/dtos/auth/login-user.dto';
 import { plainToInstance } from 'class-transformer'; // Для преобразования req.body в DTO
 import { validate } from 'class-validator'; // Для валидации DTO вручную (если не используем middleware)
+import { AppError } from '../../../../application/errors/AppError';
+import { IUserRepository, UserRepositoryToken } from '../../../../domain/repositories/IUserRepository';
+import { UserResponseDto } from '../../../../application/dtos/auth/user-response.dto';
 
 // Хотя контроллер можно сделать @injectable, для Express проще
 // инстанцировать его напрямую или разрешать Use Cases внутри методов.
@@ -88,23 +91,35 @@ export class AuthController {
         res: Response,
         next: NextFunction,
     ): Promise<void> {
-        // TODO: Реализовать после добавления auth middleware
-        // 1. Получить user ID и roles из req (добавленные auth middleware)
-        // 2. (Опционально) Получить Use Case для поиска пользователя по ID
-        // 3. Найти пользователя в репозитории
-        // 4. Вернуть UserResponseDto
+        // req.user должен быть заполнен authMiddleware (это JwtPayload)
+        const userId = req.user?.sub;
 
-        // Пока возвращаем заглушку
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const currentUser = (req as any).user; // Предполагаем, что auth middleware добавит сюда user
-        if (!currentUser) {
+        if (!userId) {
+            // Этого не должно случиться, если authMiddleware отработал правильно
             return next(
-                new Error(
-                    'User not found in request. Auth middleware missing?',
-                ),
+                new AppError('ID пользователя не найден в токене', 401),
             );
         }
-        // Просто вернем то, что добавил middleware (предположительно JwtPayload)
-        res.status(200).json(currentUser);
+
+        try {
+            // Получаем репозиторий для поиска пользователя
+            const userRepository =
+                container.resolve<IUserRepository>(UserRepositoryToken);
+            const user = await userRepository.findById(userId);
+
+            if (!user) {
+                // Если пользователь из токена не найден в БД
+                return next(new AppError('Пользователь не найден', 404));
+            }
+
+            // Преобразуем найденного пользователя в DTO для ответа
+            const userResponse = plainToInstance(UserResponseDto, user, {
+                excludeExtraneousValues: true,
+            });
+
+            res.status(200).json(userResponse);
+        } catch (error) {
+            next(error); // Передаем ошибки дальше
+        }
     }
 }

@@ -1,21 +1,24 @@
 // src/infrastructure/web/express/app.ts
 import express, { Express, Request, Response, NextFunction } from 'express';
+import 'express-async-errors'; // <--- ИМПОРТИРУЙТЕ ЗДЕСЬ!
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import config from '../../config';
-import apiRouter from './routes'; // Главный роутер API (создадим далее)
-// import { errorHandler } from './middlewares/error.middleware'; // Обработчик ошибок (создадим далее)
+import apiRouter from './routes';
+import { errorHandler } from './middlewares/error.middleware';
+import { AppError } from '../../../application/errors/AppError';
+// import { AppError } from '../../../../application/errors/AppError'; // Импортируем AppError для 404
 
 const app: Express = express();
 
 // Базовые Middlewares
-app.use(helmet()); // Заголовки безопасности
-app.use(cors()); // Разрешить CORS (настроить опции для прода)
-app.use(express.json()); // Парсер JSON тел запросов
-app.use(express.urlencoded({ extended: true })); // Парсер URL-encoded тел
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 if (config.env === 'development') {
-    app.use(morgan('dev')); // Логгер запросов для разработки
+    app.use(morgan('dev'));
 }
 
 // Health Check эндпоинт
@@ -23,22 +26,16 @@ app.get('/health', (_req: Request, res: Response) => {
     res.status(200).send('OK');
 });
 
-// Подключение API роутов
+// Подключение API роутов (express-async-errors пропатчит обработчики внутри)
 app.use(config.apiPrefix, apiRouter);
 
-// Обработчик ненайденных роутов (404) - после всех роутов API
-app.use((_req: Request, res: Response, _next: NextFunction) => {
-    res.status(404).json({ message: 'Not Found' });
+// Обработчик ненайденных роутов (404) - ДОЛЖЕН БЫТЬ ПОСЛЕ РОУТОВ API
+app.use((req: Request, _res: Response, next: NextFunction) => {
+    // Используем AppError для единообразия
+    next(new AppError(`Ресурс не найден: ${req.originalUrl}`, 404));
 });
 
-// Глобальный обработчик ошибок (должен быть последним)
-// TODO: Раскомментировать и реализовать error.middleware.ts
-// app.use(errorHandler);
-
-// Пока используем простой обработчик
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Unhandled Error:', err);
-    res.status(500).json({ message: 'Internal Server Error' });
-});
+// Глобальный обработчик ошибок - должен быть САМЫМ ПОСЛЕДНИМ middleware
+app.use(errorHandler);
 
 export default app;

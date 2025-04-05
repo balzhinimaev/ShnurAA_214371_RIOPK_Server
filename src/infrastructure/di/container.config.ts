@@ -15,6 +15,30 @@ import {
     IJwtService,
 } from '../../application/interfaces/IJwtService';
 
+// --- Импорты Customer ---
+import {
+  CustomerRepositoryToken,
+  ICustomerRepository,
+} from '../../domain/repositories/ICustomerRepository';
+import { MongoCustomerRepository } from '../database/mongoose/repositories/customer.repository'
+
+// --- Импорты Invoice ---
+import {
+  InvoiceRepositoryToken,
+  IInvoiceRepository,
+} from '../../domain/repositories/IInvoiceRepository';
+import { MongoInvoiceRepository } from '../database/mongoose/repositories/invoice.repository';
+
+// --- Импорты Use Cases ---
+import { GetDashboardSummaryUseCase } from '../../application/use-cases/reports/get-dashboard-summary.use-case';
+
+// --- Регистрация репозиториев ---
+container.register<ICustomerRepository>(CustomerRepositoryToken, { useClass: MongoCustomerRepository });
+container.register<IInvoiceRepository>(InvoiceRepositoryToken, { useClass: MongoInvoiceRepository });
+
+// --- Регистрация Use Cases ---
+container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, { useClass: GetDashboardSummaryUseCase });
+
 // Импортируем конкретные реализации из Infrastructure
 import { MongoUserRepository } from '../database/mongoose/repositories/user.repository';
 import { BcryptPasswordHasher } from '../services/bcrypt.password-hasher';

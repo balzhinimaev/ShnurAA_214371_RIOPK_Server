@@ -1,30 +1,18 @@
 // src/infrastructure/web/express/routes/report.routes.ts
-import { Router, Request, Response } from 'express';
-// import ReportController from '../controllers/report.controller'; // TODO
-// import { authMiddleware } from '../middlewares/auth.middleware'; // TODO
+import { Router } from 'express';
+import { ReportController } from '../controllers/report.controller';
+import { authMiddleware } from '../middlewares/auth.middleware';
 
 const router = Router();
-// const reportController = new ReportController(); // TODO
+const reportController = new ReportController();
 
-// TODO: Добавить authMiddleware ко всем роутам отчетов
-router.get(
-    '/dashboard/summary',
-    /* authMiddleware, reportController.getDashboardSummary */ (
-        _req: Request,
-        res: Response,
-    ) => {
-        res.status(501).json({ message: 'Dashboard Summary Not Implemented' });
-    },
-);
+// Защищаем все роуты отчетов
+router.use(authMiddleware);
 
-router.get(
-    '/aging',
-    /* authMiddleware, reportController.getAgingReport */ (
-        _req: Request,
-        res: Response,
-    ) => {
-        res.status(501).json({ message: 'Aging Report Not Implemented' });
-    },
-);
+// GET /api/v1/reports/dashboard/summary
+router.get('/dashboard/summary', reportController.getDashboardSummary);
+
+// GET /api/v1/reports/aging
+// router.get('/aging', reportController.getAgingReport); // Если будете реализовывать
 
 export default router;
