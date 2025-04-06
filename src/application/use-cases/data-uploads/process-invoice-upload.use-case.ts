@@ -20,6 +20,52 @@ import { InvoiceCsvRowDto } from '../../dtos/data-uploads/invoice-csv-row.dto'; 
 import { isValid, parse, parseISO } from 'date-fns'; // Для работы с датами
 
 // Интерфейс для возвращаемого результата обработки файла
+/**
+ * @openapi
+ * components:
+ *   schemas:
+ *     ProcessUploadResult:
+ *       type: object
+ *       properties:
+ *         totalRows:
+ *           type: integer
+ *           description: Общее количество непустых строк данных в файле (не считая заголовок).
+ *           example: 100
+ *         processedRows:
+ *           type: integer
+ *           description: Количество строк, по которым были успешно созданы/обновлены счета.
+ *           example: 95
+ *         createdCustomers:
+ *           type: integer
+ *           description: Количество новых клиентов, созданных во время обработки.
+ *           example: 10
+ *         createdInvoices:
+ *           type: integer
+ *           description: Количество новых счетов, созданных во время обработки.
+ *           example: 95
+ *         updatedInvoices:
+ *           type: integer
+ *           description: Количество обновленных счетов (если реализовано, пока 0).
+ *           example: 0
+ *         skippedRows:
+ *           type: integer
+ *           description: Количество строк, пропущенных из-за ошибок валидации или обработки.
+ *           example: 5
+ *         errors:
+ *           type: array
+ *           description: Список сообщений об ошибках, возникших при обработке строк.
+ *           items:
+ *             type: string
+ *             example: "Строка 5: Ошибка валидации: Некорректный формат даты оплаты (DueDate)"
+ *       required:
+ *         - totalRows
+ *         - processedRows
+ *         - createdCustomers
+ *         - createdInvoices
+ *         - updatedInvoices
+ *         - skippedRows
+ *         - errors
+ */
 export interface ProcessUploadResult {
     totalRows: number; // Всего строк в файле (не считая пустые и заголовок)
     processedRows: number; // Строк успешно обработано (созданы или обновлены счета)

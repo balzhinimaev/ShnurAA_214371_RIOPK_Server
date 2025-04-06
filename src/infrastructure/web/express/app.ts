@@ -8,9 +8,16 @@ import config from '../../config';
 import apiRouter from './routes';
 import { errorHandler } from './middlewares/error.middleware';
 import { AppError } from '../../../application/errors/AppError';
+import swaggerSpec from "../../../swagger.config" 
 // import { AppError } from '../../../../application/errors/AppError'; // Импортируем AppError для 404
-
+import swaggerUi from 'swagger-ui-express';
 const app: Express = express();
+
+// --- Swagger UI Setup ---
+// Путь, по которому будет доступна документация
+const swaggerDocsPath = '/api-docs';
+app.use(swaggerDocsPath, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+console.log(`Swagger UI available at http://localhost:${config.port}${swaggerDocsPath}`);
 
 // Базовые Middlewares
 app.use(helmet());

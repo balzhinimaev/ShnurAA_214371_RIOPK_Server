@@ -1,57 +1,57 @@
 // src/infrastructure/di/container.config.ts
 import { container } from 'tsyringe';
-import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
-// Импортируем токены (интерфейсы) из Domain и Application
+import mongoose from 'mongoose'; // <-- Импорт mongoose
+
+// --- Токены и Интерфейсы ---
+// Domain / Application Interfaces and Tokens
 import {
-    UserRepositoryToken,
-    IUserRepository,
-} from '../../domain/repositories/IUserRepository';
-import {
-    PasswordHasherToken,
     IPasswordHasher,
+    PasswordHasherToken,
 } from '../../application/interfaces/IPasswordHasher';
 import {
-    JwtServiceToken,
     IJwtService,
+    JwtServiceToken,
 } from '../../application/interfaces/IJwtService';
-
-// --- Импорты Customer ---
 import {
-  CustomerRepositoryToken,
-  ICustomerRepository,
+    IUserRepository,
+    UserRepositoryToken,
+} from '../../domain/repositories/IUserRepository';
+import {
+    ICustomerRepository,
+    CustomerRepositoryToken,
 } from '../../domain/repositories/ICustomerRepository';
-import { MongoCustomerRepository } from '../database/mongoose/repositories/customer.repository'
-
-// --- Импорты Invoice ---
 import {
-  InvoiceRepositoryToken,
-  IInvoiceRepository,
+    IInvoiceRepository,
+    InvoiceRepositoryToken,
 } from '../../domain/repositories/IInvoiceRepository';
-import { MongoInvoiceRepository } from '../database/mongoose/repositories/invoice.repository';
 
-// --- Импорты Use Cases ---
-import { GetDashboardSummaryUseCase } from '../../application/use-cases/reports/get-dashboard-summary.use-case';
-
-// --- Регистрация репозиториев ---
-container.register<ICustomerRepository>(CustomerRepositoryToken, { useClass: MongoCustomerRepository });
-container.register<IInvoiceRepository>(InvoiceRepositoryToken, { useClass: MongoInvoiceRepository });
-
-// --- Регистрация Use Cases ---
-container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, { useClass: GetDashboardSummaryUseCase });
-
-// Импортируем конкретные реализации из Infrastructure
+// --- Конкретные Реализации (Infrastructure) ---
+// Токен для Mongoose Connection (предполагаем, что он экспортируется из user.repository или общего места)
+import { MongooseConnectionToken } from '../database/mongoose/repositories/user.repository';
+// Репозитории
 import { MongoUserRepository } from '../database/mongoose/repositories/user.repository';
+import { MongoCustomerRepository } from '../database/mongoose/repositories/customer.repository';
+import { MongoInvoiceRepository } from '../database/mongoose/repositories/invoice.repository';
+// Сервисы
 import { BcryptPasswordHasher } from '../services/bcrypt.password-hasher';
 import { JsonWebTokenService } from '../services/jsonwebtoken.service';
+
+// --- Use Cases ---
 import { RegisterUserUseCase } from '../../application/use-cases/auth/register-user.use-case';
 import { LoginUserUseCase } from '../../application/use-cases/auth/login-user.use-case';
+import { GetDashboardSummaryUseCase } from '../../application/use-cases/reports/get-dashboard-summary.use-case';
+import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
 
-// --- Регистрация зависимостей ---
+// --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 
-// Репозиторий Пользователей
-container.register<IUserRepository>(UserRepositoryToken, {
-    useClass: MongoUserRepository, // Когда запрашивают IUserRepository, предоставлять экземпляр MongoUserRepository
+// 1. Базовые сервисы и конфигурация инфраструктуры
+
+// Регистрируем ДЕФОЛТНОЕ соединение Mongoose под специальным токеном.
+// В тестах это значение будет ПЕРЕОПРЕДЕЛЕНО в jest.setup.ts.
+container.register(MongooseConnectionToken, {
+    useValue: mongoose.connection, // Передаем стандартное соединение Mongoose
 });
+// console.log(`[DI_CONFIG] Registered default mongoose connection for token ${MongooseConnectionToken.toString()}`); // Лог для отладки
 
 // Сервис Хеширования Паролей
 container.register<IPasswordHasher>(PasswordHasherToken, {
@@ -63,24 +63,48 @@ container.register<IJwtService>(JwtServiceToken, {
     useClass: JsonWebTokenService,
 });
 
-// --- Регистрация Use Cases ---
+// 2. Регистрация Репозиториев
+// Предполагается, что все Mongo*Repository классы теперь принимают
+// @inject(MongooseConnectionToken) connection: Connection в конструкторе.
+
+container.register<IUserRepository>(UserRepositoryToken, {
+    useClass: MongoUserRepository,
+});
+
+// TODO: Адаптируйте MongoCustomerRepository, чтобы он принимал Connection через DI
+container.register<ICustomerRepository>(CustomerRepositoryToken, {
+    useClass: MongoCustomerRepository,
+});
+
+// TODO: Адаптируйте MongoInvoiceRepository, чтобы он принимал Connection через DI
+container.register<IInvoiceRepository>(InvoiceRepositoryToken, {
+    useClass: MongoInvoiceRepository,
+});
+
+// 3. Регистрация Use Cases
+// Use Cases зависят от интерфейсов репозиториев/сервисов,
+// контейнер сам подставит зарегистрированные реализации.
+
 container.register<RegisterUserUseCase>(RegisterUserUseCase, {
     useClass: RegisterUserUseCase,
 });
 container.register<LoginUserUseCase>(LoginUserUseCase, {
     useClass: LoginUserUseCase,
 });
+container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, {
+    useClass: GetDashboardSummaryUseCase,
+});
+container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, {
+    useClass: ProcessInvoiceUploadUseCase,
+});
 
-// ... Auth Use Cases ...
-container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, { useClass: GetDashboardSummaryUseCase });
-container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, { useClass: ProcessInvoiceUploadUseCase });
-
-// --- Регистрация Controllers (будет добавлено позже) ---
-// Пример:
+// --- Регистрация Controllers ---
+// Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.
+// Если ваши роутеры используют container.resolve(Controller), то регистрация не нужна,
+// если Controller помечен @injectable() и все его зависимости зарегистрированы.
+// Пример явной регистрации (если потребуется):
 // import { AuthController } from '../web/express/controllers/auth.controller';
-// container.register<AuthController>(AuthController, { useClass: AuthController });
+// container.register<AuthController>(AuthController);
 
-console.log('DI container configured.');
-
-// Экспортируем настроенный контейнер (хотя обычно мы будем импортировать его напрямую там, где нужно разрешение зависимостей)
+// Экспорт контейнера не обязателен для работы tsyringe, но может быть полезен для явного использования в некоторых случаях
 export default container;

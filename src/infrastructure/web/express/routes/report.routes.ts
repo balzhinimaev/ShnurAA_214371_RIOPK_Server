@@ -6,13 +6,40 @@ import { authMiddleware } from '../middlewares/auth.middleware';
 const router = Router();
 const reportController = new ReportController();
 
-// Защищаем все роуты отчетов
+// Применяем authMiddleware ко всем роутам отчетов
 router.use(authMiddleware);
 
-// GET /api/v1/reports/dashboard/summary
+/**
+ * @openapi
+ * /reports/dashboard/summary:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Получение сводки для дашборда
+ *     description: Возвращает основные показатели дебиторской задолженности (общая сумма, просроченная, структура старения).
+ *     security:
+ *       - bearerAuth: [] # Требуется JWT Bearer токен
+ *     responses:
+ *       200:
+ *         description: Сводные данные для дашборда.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DashboardSummaryDto' # Ссылка на DTO ответа
+ *       401:
+ *         description: Ошибка авторизации.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Внутренняя ошибка сервера при расчете сводки.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 router.get('/dashboard/summary', reportController.getDashboardSummary);
 
-// GET /api/v1/reports/aging
-// router.get('/aging', reportController.getAgingReport); // Если будете реализовывать
+// TODO: Добавить аннотации для /reports/aging, если будете реализовывать
 
 export default router;

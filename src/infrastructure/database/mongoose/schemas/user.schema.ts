@@ -6,7 +6,7 @@ import { User } from '../../../../domain/entities/user.entity';
 // Это необходимо, т.к. Mongoose документ имеет доп. методы и свойства
 export interface IUserDocument extends Omit<User, 'id'>, Document {}
 
-const UserSchema = new Schema<IUserDocument>(
+export const UserSchema = new Schema<IUserDocument>(
     {
         name: { type: String, required: true },
         email: {
