@@ -3,12 +3,12 @@ import { injectable, inject } from 'tsyringe';
 import {
     ICustomerRepository,
     CustomerRepositoryToken,
-    UpdateCustomerData, // Используем тип данных для обновления из репозитория
+    UpdateCustomerData, // Используем тип из репозитория
 } from '../../../domain/repositories/ICustomerRepository';
 import { CustomerResponseDto } from '../../dtos/customers/customer-response.dto';
-import { UpdateCustomerDto } from '../../dtos/customers/update-customer.dto'; // DTO с данными из запроса
 import { plainToInstance } from 'class-transformer';
 import { AppError } from '../../errors/AppError';
+import { UserRole } from '../../../domain/entities/user.entity'; // Предполагаем, что тип роли есть
 
 @injectable()
 export class UpdateCustomerUseCase {
@@ -18,81 +18,49 @@ export class UpdateCustomerUseCase {
     ) {}
 
     /**
-     * Обновляет данные клиента (имя, контактная информация).
-     * Проверяет принадлежность клиента указанному пользователю.
-     * @param customerId - ID клиента для обновления.
-     * @param userId - ID пользователя, выполняющего операцию (для проверки прав).
-     * @param data - DTO с новыми данными (UpdateCustomerDto).
-     * @returns Обновленный CustomerResponseDto если клиент найден и обновлен, иначе null.
-     * @throws {AppError} Если произошла ошибка валидации или ошибка БД.
+     * Обновляет данные глобального клиента.
+     * Проверяет, имеет ли пользователь права на обновление (ADMIN или ANALYST).
+     * @param customerId - ID обновляемого клиента.
+     * @param actingUserRoles - Роли пользователя, выполняющего действие.
+     * @param data - Данные для обновления.
+     * @returns Обновленные данные клиента в виде CustomerResponseDto.
+     * @throws {AppError} Если нет прав (403), клиент не найден (404), или ошибка БД (500).
      */
     async execute(
         customerId: string,
-        userId: string,
-        data: UpdateCustomerDto,
-    ): Promise<CustomerResponseDto | null> {
-        // Преобразуем DTO в данные для репозитория
-        const updateData: UpdateCustomerData = {
-            name: data.name,
-            contactInfo: data.contactInfo,
-        };
-
-        // Убираем undefined поля
-        Object.keys(updateData).forEach(
-            (key) =>
-                updateData[key as keyof UpdateCustomerData] === undefined &&
-                delete updateData[key as keyof UpdateCustomerData],
-        );
-
-        // Проверяем, есть ли что обновлять
-        if (Object.keys(updateData).length === 0) {
-            console.warn(
-                `UpdateCustomerUseCase: No actual data provided to update customer ${customerId}.`,
+        actingUserRoles: UserRole[], // Принимаем роли для проверки
+        data: UpdateCustomerData,
+    ): Promise<CustomerResponseDto> {
+        // --- ДОБАВЛЕНО: Проверка прав ---
+        const allowedRoles: UserRole[] = ['ADMIN', 'ANALYST'];
+        if (!actingUserRoles?.some((role) => allowedRoles.includes(role))) {
+            throw new AppError(
+                'Доступ запрещен: недостаточно прав для обновления клиента',
+                403,
             );
-            // Если нет данных, просто получаем и возвращаем текущего клиента
-            // (репозиторий должен обработать проверку userId при поиске, если findById ее делает,
-            // или нам нужно вызвать findById с userId здесь)
-            const currentUser =
-                await this.customerRepository.findById(customerId); // Используем findById
-            // Дополнительная проверка принадлежности пользователю, если findById ее не делает
-            // const currentUser = await this.customerRepository.findCustomerByIdAndUserId(customerId, userId); // Если есть такой метод
-            if (!currentUser /* || currentUser.userId !== userId */)
-                return null; // Проверка принадлежности
-            return plainToInstance(CustomerResponseDto, currentUser, {
-                excludeExtraneousValues: true,
-            });
         }
 
         try {
-            // Вызываем метод репозитория для обновления, передавая ID клиента, ID пользователя и данные
+            // --- ИЗМЕНЕНО: Вызываем update без userId ---
             const updatedCustomer = await this.customerRepository.update(
                 customerId,
-                userId,
-                updateData,
+                data,
             );
 
             if (!updatedCustomer) {
-                // Репозиторий вернул null, значит клиент не найден ИЛИ не принадлежит пользователю
-                return null;
+                // Репозиторий вернет null, если ID не найден
+                throw new AppError('Клиент для обновления не найден', 404);
             }
 
-            // Преобразуем обновленную сущность в DTO
-            const customerDto = plainToInstance(
-                CustomerResponseDto,
-                updatedCustomer,
-                {
-                    excludeExtraneousValues: true,
-                },
-            );
-
-            return customerDto;
+            return plainToInstance(CustomerResponseDto, updatedCustomer, {
+                excludeExtraneousValues: true,
+            });
         } catch (error) {
             console.error(
-                `Error in UpdateCustomerUseCase for ID ${customerId}, user ${userId}:`,
+                `Error in UpdateCustomerUseCase for ID ${customerId}:`,
                 error,
             );
             if (error instanceof AppError) {
-                // Пробрасываем AppError (например, 400 Bad Request из-за валидации)
                 throw error;
             }
             throw new AppError('Не удалось обновить клиента', 500);

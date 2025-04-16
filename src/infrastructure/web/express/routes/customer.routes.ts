@@ -3,16 +3,14 @@ import { Router } from 'express';
 import { CustomerController } from '../controllers/customer.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { roleMiddleware } from '../middlewares/role.middleware';
-// TODO: import { validationMiddleware } from '../middlewares/validation.middleware';
-// import { UpdateCustomerDto } from '../../../../application/dtos/customers/update-customer.dto'; // Импортируем DTO для ссылки
+// import { validationMiddleware } from '../middlewares/validation.middleware';
+// import { UpdateCustomerDto } from '../../../../application/dtos/customers/update-customer.dto';
 
 const router = Router();
 const customerController = new CustomerController();
 
-// --- Применяем middleware ко ВСЕМ маршрутам управления клиентами ---
-// Доступно только аутентифицированным пользователям с ролью ADMIN или ANALYST
+// --- Применяем общую аутентификацию ко всем маршрутам ---
 router.use(authMiddleware);
-router.use(roleMiddleware(['ADMIN', 'ANALYST']));
 
 // --- Маршруты для /api/v1/customers ---
 
@@ -20,53 +18,32 @@ router.use(roleMiddleware(['ADMIN', 'ANALYST']));
  * @openapi
  * /customers:
  *   get:
- *     tags: [Клиенты] # Группируем в Swagger UI
- *     summary: Получить список клиентов пользователя
- *     description: Возвращает список клиентов, связанных с текущим аутентифицированным пользователем, с пагинацией и сортировкой. Доступно ролям ADMIN и ANALYST.
+ *     tags: [Клиенты]
+ *     summary: Получить глобальный список клиентов
+ *     description: Возвращает список всех клиентов в системе с пагинацией и сортировкой. Доступно ролям ADMIN, ANALYST и MANAGER.
  *     security:
- *       - bearerAuth: [] # Требуется JWT и роль ADMIN/ANALYST
+ *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *         description: Количество клиентов на странице.
- *       - in: query
- *         name: offset
- *         schema:
- *           type: integer
- *           default: 0
- *         description: Смещение для пагинации.
- *       - in: query
- *         name: sortBy
- *         schema:
- *           type: string
- *           enum: [createdAt, updatedAt, name, inn] # Допустимые поля для сортировки
- *           default: name
- *         description: Поле для сортировки.
- *       - in: query
- *         name: sortOrder
- *         schema:
- *           type: string
- *           enum: [asc, desc]
- *           default: asc
- *         description: Порядок сортировки.
+ *       # ... (параметры limit, offset, sortBy, sortOrder остаются)
  *     responses:
  *       '200':
- *         description: Успешный ответ со списком клиентов и информацией для пагинации.
+ *         description: Успешный ответ со списком клиентов.
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ListCustomersResponseDto' # Ссылка на DTO ответа
+ *               $ref: '#/components/schemas/ListCustomersResponseDto'
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '403':
- *         $ref: '#/components/responses/ForbiddenError'
+ *         $ref: '#/components/responses/ForbiddenError' # Если роль не совпала
  *       '500':
  *         $ref: '#/components/responses/InternalServerError'
  */
-router.get('/', customerController.getAllCustomers);
+router.get(
+    '/',
+    roleMiddleware(['ADMIN', 'ANALYST', 'MANAGER']), // Разрешаем всем читать
+    customerController.getAllCustomers,
+);
 
 /**
  * @openapi
@@ -74,17 +51,11 @@ router.get('/', customerController.getAllCustomers);
  *   get:
  *     tags: [Клиенты]
  *     summary: Получить клиента по ID
- *     description: Возвращает детальную информацию о конкретном клиенте. Доступно ролям ADMIN и ANALYST. (Примечание: текущая реализация UseCase может не проверять принадлежность клиента пользователю, полагаясь на ACL на уровне запроса или другую логику).
+ *     description: Возвращает детальную информацию о конкретном клиенте. Доступно ролям ADMIN, ANALYST и MANAGER.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           description: Уникальный идентификатор клиента (ObjectId).
- *           example: 6151f5a0a9a7b1001b1a77a5
+ *       # ... (параметр id остается)
  *     responses:
  *       '200':
  *         description: Успешный ответ с данными клиента.
@@ -92,26 +63,20 @@ router.get('/', customerController.getAllCustomers);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/CustomerResponseDto'
- *       '400':
- *         description: Неверный формат ID клиента.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '403':
  *         $ref: '#/components/responses/ForbiddenError'
  *       '404':
- *         description: Клиент с указанным ID не найден.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         $ref: '#/components/responses/NotFoundError' # Стандартный ответ 404
  *       '500':
  *         $ref: '#/components/responses/InternalServerError'
  */
-router.get('/:id', customerController.getCustomerById);
+router.get(
+    '/:id',
+    roleMiddleware(['ADMIN', 'ANALYST', 'MANAGER']), // Разрешаем всем читать
+    customerController.getCustomerById,
+);
 
 /**
  * @openapi
@@ -119,52 +84,37 @@ router.get('/:id', customerController.getCustomerById);
  *   put:
  *     tags: [Клиенты]
  *     summary: Обновить клиента
- *     description: Обновляет имя и/или контактную информацию существующего клиента, принадлежащего текущему пользователю. Доступно ролям ADMIN и ANALYST.
+ *     description: Обновляет имя и/или контактную информацию существующего клиента. Доступно ролям ADMIN и ANALYST.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           description: Уникальный идентификатор клиента для обновления (ObjectId).
- *           example: 6151f5a0a9a7b1001b1a77a5
+ *       # ... (параметр id остается)
  *     requestBody:
- *       description: Данные для обновления клиента (хотя бы одно поле должно быть предоставлено).
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/UpdateCustomerDto' # Ссылка на DTO обновления
+ *       # ... (тело запроса остается)
  *     responses:
  *       '200':
- *         description: Клиент успешно обновлен. Возвращает обновленные данные клиента.
+ *         description: Клиент успешно обновлен.
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/CustomerResponseDto'
  *       '400':
- *         description: Ошибка валидации входных данных или неверный формат ID.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         $ref: '#/components/responses/BadRequestError' # Ошибка валидации DTO
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '403':
- *         $ref: '#/components/responses/ForbiddenError'
+ *         $ref: '#/components/responses/ForbiddenError' # Недостаточно прав
  *       '404':
- *         description: Клиент с указанным ID не найден или не принадлежит текущему пользователю.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         $ref: '#/components/responses/NotFoundError' # Клиент не найден
  *       '500':
  *         $ref: '#/components/responses/InternalServerError'
  */
-// TODO: Добавить validationMiddleware(UpdateCustomerDto)
-router.put('/:id', customerController.updateCustomer);
+router.put(
+    '/:id',
+    roleMiddleware(['ADMIN', 'ANALYST']), // Только эти роли могут менять
+    // TODO: validationMiddleware(UpdateCustomerDto),
+    customerController.updateCustomer,
+);
 
 /**
  * @openapi
@@ -172,22 +122,16 @@ router.put('/:id', customerController.updateCustomer);
  *   delete:
  *     tags: [Клиенты]
  *     summary: Удалить клиента
- *     description: Удаляет клиента, принадлежащего текущему пользователю. Доступно ролям ADMIN и ANALYST. (Примечание: может потребоваться проверка наличия связанных неоплаченных счетов перед удалением).
+ *     description: Удаляет клиента из системы. Доступно **только** роли ADMIN. Может быть отклонено, если есть связанные данные (например, счета).
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           description: Уникальный идентификатор клиента для удаления (ObjectId).
- *           example: 6151f5a0a9a7b1001b1a77a5
+ *       # ... (параметр id остается)
  *     responses:
  *       '204':
- *         description: Клиент успешно удален (No Content).
+ *         description: Клиент успешно удален.
  *       '400':
- *         description: Неверный формат ID или нельзя удалить клиента (например, есть связанные счета).
+ *         description: Нельзя удалить клиента (например, есть связанные счета).
  *         content:
  *           application/json:
  *             schema:
@@ -195,37 +139,16 @@ router.put('/:id', customerController.updateCustomer);
  *       '401':
  *         $ref: '#/components/responses/UnauthorizedError'
  *       '403':
- *         $ref: '#/components/responses/ForbiddenError'
+ *         $ref: '#/components/responses/ForbiddenError' # Недостаточно прав (не ADMIN)
  *       '404':
- *         description: Клиент с указанным ID не найден или не принадлежит текущему пользователю.
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         $ref: '#/components/responses/NotFoundError' # Клиент не найден
  *       '500':
  *         $ref: '#/components/responses/InternalServerError'
  */
-router.delete('/:id', customerController.deleteCustomer);
+router.delete(
+    '/:id',
+    roleMiddleware(['ADMIN']), // ТОЛЬКО Админ может удалять
+    customerController.deleteCustomer,
+);
 
 export default router;
-
-// --- Напоминание: Определите DTO и стандартные ответы в swagger.config.ts ---
-/*
- В вашем файле конфигурации Swagger (например, swagger.config.ts) в разделе `components/schemas`:
-   CustomerResponseDto:
-     # ... (определение из DTO)
-   UpdateCustomerDto:
-     # ... (определение из DTO)
-   ListCustomersResponseDto:
-     # ... (определение из DTO)
-   ErrorResponse:
-     # ... (определение)
-
- В разделе `components/responses`:
-   UnauthorizedError:
-     # ... (определение)
-   ForbiddenError:
-     # ... (определение)
-   InternalServerError:
-     # ... (определение)
-*/

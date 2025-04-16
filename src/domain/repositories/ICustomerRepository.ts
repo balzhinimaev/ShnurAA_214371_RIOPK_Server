@@ -1,53 +1,48 @@
 // src/domain/repositories/ICustomerRepository.ts
 import { Customer } from '../entities/customer.entity';
 
-// --- ТИПЫ ДАННЫХ ---
-// Для создания клиента (уже есть у вас)
+// Тип для создания остается прежним (userId нужен для аудита)
 export interface CreateCustomerData {
-    // Делаем export, чтобы можно было использовать в других местах
     name: string;
     inn?: string;
     contactInfo?: string;
-    userId: string;
+    userId: string; // Кто создал
 }
 
-// Для опций поиска/пагинации
+// --- ИЗМЕНЕНО: Убран userId из опций поиска ---
 export interface FindAllCustomersOptions {
-    userId: string; // Клиенты ищутся в рамках пользователя
+    // userId: string; // БОЛЬШЕ НЕ НУЖЕН ДЛЯ ФИЛЬТРАЦИИ
     limit?: number;
     offset?: number;
-    sortBy?: keyof Customer | string; // Поля Customer или кастомные
+    sortBy?: keyof Customer | string;
     sortOrder?: 'asc' | 'desc';
-    // filter?: { name?: string; inn?: string }; // Опционально
+    // filter?: { name?: string; inn?: string }; // Опционально для глобального поиска
 }
 
-// Для обновления клиента
+// Тип для обновления остается прежним
 export interface UpdateCustomerData {
     name?: string;
     contactInfo?: string | null;
-    // INN и userId не меняем через этот метод
 }
-// --- КОНЕЦ ТИПОВ ДАННЫХ ---
 
-// --- ОСНОВНОЙ ИНТЕРФЕЙС РЕПОЗИТОРИЯ ---
 export interface ICustomerRepository {
-    // Существующие методы
     findById(id: string): Promise<Customer | null>;
-    findByInn(inn: string, userId: string): Promise<Customer | null>;
+
+    // --- ИЗМЕНЕНО: Убран userId ---
+    findByInn(inn: string): Promise<Customer | null>; // ИНН считаем глобально уникальным
+
     create(data: CreateCustomerData): Promise<Customer>;
 
-    // --- ДОБАВЛЕННЫЕ МЕТОДЫ ---
+    // --- ИЗМЕНЕНО: Сигнатура findAll ---
     findAll(
-        options: FindAllCustomersOptions,
+        options: FindAllCustomersOptions, // Больше не требует userId
     ): Promise<{ customers: Customer[]; total: number }>;
-    update(
-        id: string,
-        userId: string,
-        data: UpdateCustomerData,
-    ): Promise<Customer | null>;
-    delete(id: string, userId: string): Promise<boolean>;
-    // --- КОНЕЦ ДОБАВЛЕННЫХ МЕТОДОВ ---
+
+    // --- ИЗМЕНЕНО: Сигнатура update (убран userId) ---
+    update(id: string, data: UpdateCustomerData): Promise<Customer | null>;
+
+    // --- ИЗМЕНЕНО: Сигнатура delete (убран userId) ---
+    delete(id: string): Promise<boolean>;
 }
-// --- КОНЕЦ ИНТЕРФЕЙСА ---
 
 export const CustomerRepositoryToken = Symbol('ICustomerRepository');

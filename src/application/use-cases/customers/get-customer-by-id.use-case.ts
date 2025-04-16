@@ -16,27 +16,22 @@ export class GetCustomerByIdUseCase {
     ) {}
 
     /**
-     * Получает клиента по его ID.
-     * Примечание: Не проверяет принадлежность пользователю, это должен делать контроллер или middleware.
-     * @param customerId - ID искомого клиента.
-     * @returns CustomerResponseDto если клиент найден, иначе null.
-     * @throws {AppError} Если произошла ошибка БД.
+     * Получает клиента по его глобальному ID.
+     * @param customerId - ID клиента.
+     * @returns Данные клиента в виде CustomerResponseDto.
+     * @throws {AppError} Если клиент не найден (404) или произошла ошибка БД (500).
      */
-    async execute(customerId: string): Promise<CustomerResponseDto | null> {
+    async execute(customerId: string): Promise<CustomerResponseDto> {
         try {
-            // Ищем клиента по ID
             const customer = await this.customerRepository.findById(customerId);
 
             if (!customer) {
-                return null; // Клиент не найден
+                throw new AppError('Клиент не найден', 404);
             }
 
-            // Преобразуем в DTO
-            const customerDto = plainToInstance(CustomerResponseDto, customer, {
+            return plainToInstance(CustomerResponseDto, customer, {
                 excludeExtraneousValues: true,
             });
-
-            return customerDto;
         } catch (error) {
             console.error(
                 `Error in GetCustomerByIdUseCase for ID ${customerId}:`,
@@ -45,7 +40,7 @@ export class GetCustomerByIdUseCase {
             if (error instanceof AppError) {
                 throw error;
             }
-            throw new AppError('Не удалось получить клиента по ID', 500);
+            throw new AppError('Не удалось получить данные клиента', 500);
         }
     }
 }

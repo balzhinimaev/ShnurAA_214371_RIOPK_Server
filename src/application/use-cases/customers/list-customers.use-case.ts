@@ -3,7 +3,7 @@ import { injectable, inject } from 'tsyringe';
 import {
     ICustomerRepository,
     CustomerRepositoryToken,
-    FindAllCustomersOptions, // Используем тип опций из репозитория
+    FindAllCustomersOptions, // Используем обновленный тип
 } from '../../../domain/repositories/ICustomerRepository';
 import { CustomerResponseDto } from '../../dtos/customers/customer-response.dto';
 import { ListCustomersResponseDto } from '../../dtos/customers/list-customers-response.dto';
@@ -18,52 +18,39 @@ export class ListCustomersUseCase {
     ) {}
 
     /**
-     * Получает список клиентов для указанного пользователя с пагинацией и сортировкой.
-     * @param options - Опции поиска, включая обязательный userId.
+     * Получает глобальный список клиентов с пагинацией и сортировкой.
+     * @param options - Опции пагинации и сортировки (userId больше не нужен).
      * @returns Объект ListCustomersResponseDto с результатами.
-     * @throws {AppError} Если userId не предоставлен или произошла ошибка БД.
+     * @throws {AppError} Если произошла ошибка БД.
      */
     async execute(
-        options: FindAllCustomersOptions,
+        options: FindAllCustomersOptions, // Принимает обновленные опции
     ): Promise<ListCustomersResponseDto> {
-        // Валидация входных данных (userId обязателен)
-        if (!options?.userId) {
-            throw new AppError(
-                'Не указан ID пользователя для поиска клиентов',
-                400,
-            );
-        }
+        // --- ИЗМЕНЕНО: Убрана проверка userId ---
+        // if (!options?.userId) { ... }
 
         try {
-            // Вызываем метод репозитория
+            // Вызываем метод репозитория без userId для фильтрации
             const { customers, total } =
                 await this.customerRepository.findAll(options);
 
-            // Преобразуем сущности Customer в CustomerResponseDto
             const customerDtos = customers.map((customer) =>
                 plainToInstance(CustomerResponseDto, customer, {
-                    excludeExtraneousValues: true, // Убираем поля без @Expose
+                    excludeExtraneousValues: true,
                 }),
             );
 
-            // Формируем и возвращаем DTO ответа
-            // Используем plainToInstance для гарантии структуры ответа
             return plainToInstance(ListCustomersResponseDto, {
                 customers: customerDtos,
                 total,
                 offset: options.offset ?? 0,
-                limit: options.limit ?? 10, // Используем значения по умолчанию, если не переданы
+                limit: options.limit ?? 10,
             });
         } catch (error) {
-            console.error(
-                `Error in ListCustomersUseCase for user ${options.userId}:`,
-                error,
-            );
+            console.error(`Error in ListCustomersUseCase:`, error);
             if (error instanceof AppError) {
-                // Пробрасываем AppError (например, 400 из-за невалидного userId в репозитории)
                 throw error;
             }
-            // Оборачиваем другие ошибки
             throw new AppError('Не удалось получить список клиентов', 500);
         }
     }
