@@ -2,81 +2,55 @@
 import { injectable } from 'tsyringe';
 import { Customer } from '../../../../domain/entities/customer.entity';
 import { CustomerModel, ICustomerDocument } from '../schemas/customer.schema';
-import { ICustomerRepository } from '../../../../domain/repositories/ICustomerRepository';
-import { AppError } from '../../../../application/errors/AppError'; // Для возможной ошибки дубликата
+import {
+    ICustomerRepository,
+    CreateCustomerData,
+    FindAllCustomersOptions,
+    UpdateCustomerData,
+} from '../../../../domain/repositories/ICustomerRepository';
+import { AppError } from '../../../../application/errors/AppError';
 import mongoose, { Types } from 'mongoose';
 
-interface CreateCustomerData {
-    name: string;
-    inn?: string;
-    contactInfo?: string;
-    userId: string; // <-- Обязательный userId
-}
-
-// Расширяем базовый интерфейс для ясности
-interface ICustomerRepositoryExtended extends ICustomerRepository {
-    findByInn(inn: string, userId: string): Promise<Customer | null>;
-    create(data: CreateCustomerData): Promise<Customer>;
-}
-
 @injectable()
-export class MongoCustomerRepository implements ICustomerRepositoryExtended {
-    /**
-     * Преобразует документ Mongoose в доменную сущность Customer.
-     * @param doc - Документ Mongoose.
-     * @returns Экземпляр Customer.
-     */
-    private mapToDomain(doc: ICustomerDocument): Customer {
-        const obj = doc.toObject(); // Используем toObject с настроенным transform
+export class MongoCustomerRepository implements ICustomerRepository {
+    private mapToDomain(doc: ICustomerDocument | null): Customer | null {
+        if (!doc) return null;
+        // Используем toObject, так как lean() убран из findAll
+        const obj = doc.toObject();
         return new Customer({
-            id: obj.id,
+            id: obj.id, // Предполагается, что transform в схеме добавляет id
             name: obj.name,
             inn: obj.inn,
             contactInfo: obj.contactInfo,
             createdAt: obj.createdAt,
             updatedAt: obj.updatedAt,
-            // totalDebt и overdueDebt не хранятся в этой модели
         });
     }
 
-    /**
-     * Находит клиента по его ID.
-     * @param id - ID клиента (строка ObjectId).
-     * @returns Промис с найденным Customer или null.
-     */
     async findById(id: string): Promise<Customer | null> {
-        // Проверка на валидность ObjectId
-        if (!id || !id.match(/^[0-9a-fA-F]{24}$/)) {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
             return null;
         }
         try {
             const doc = await CustomerModel.findById(id).exec();
-            return doc ? this.mapToDomain(doc) : null;
+            return this.mapToDomain(doc);
         } catch (error) {
             console.error(`Error finding customer by ID ${id}:`, error);
-            // Можно выбросить AppError или вернуть null в зависимости от стратегии обработки ошибок
             throw new AppError('Ошибка при поиске клиента по ID', 500);
         }
     }
 
-    /**
-     * Находит клиента по его ИНН.
-     * @param inn - ИНН клиента.
-     * @returns Промис с найденным Customer или null.
-     */
     async findByInn(inn: string, userId: string): Promise<Customer | null> {
         if (!inn || !mongoose.Types.ObjectId.isValid(userId)) {
-            // Проверяем и userId
             return null;
         }
         try {
             const userObjectId = new Types.ObjectId(userId);
-            // Ищем по userId и inn
             const doc = await CustomerModel.findOne({
                 userId: userObjectId,
                 inn: inn,
             }).exec();
-            return doc ? this.mapToDomain(doc) : null;
+            return this.mapToDomain(doc);
         } catch (error) {
             console.error(
                 `Error finding customer by INN ${inn} for user ${userId}:`,
@@ -86,72 +60,212 @@ export class MongoCustomerRepository implements ICustomerRepositoryExtended {
         }
     }
 
-    /**
-     * Создает нового клиента.
-     * @param data - Данные для создания клиента (name обязательно, inn и contactInfo опционально).
-     * @returns Промис с созданным Customer.
-     * @throws {AppError} Если клиент с таким ИНН уже существует (если ИНН предоставлен).
-     */
     async create(data: CreateCustomerData): Promise<Customer> {
-        // Проверка на дубликат ИНН в рамках пользователя перед попыткой сохранения
         if (data.inn) {
-            const existingByInn = await this.findByInn(data.inn, data.userId); // Передаем userId
+            const existingByInn = await this.findByInn(data.inn, data.userId);
             if (existingByInn) {
-                console.warn(
-                    `Attempted to create customer for user ${data.userId} with existing INN: ${data.inn}. Returning existing.`,
-                );
-                return existingByInn; // Возвращаем существующего, как и хотели
+                return existingByInn;
             }
         }
-
         try {
             const newCustomerDoc = new CustomerModel({
                 name: data.name,
                 inn: data.inn,
                 contactInfo: data.contactInfo,
-                userId: new Types.ObjectId(data.userId), // <-- Передаем и преобразуем userId
+                userId: new Types.ObjectId(data.userId),
             });
-            // Сохранение вызовет ошибку валидации, если userId отсутствует или некорректен
             const savedDoc = await newCustomerDoc.save();
-            return this.mapToDomain(savedDoc);
+            const mappedCustomer = this.mapToDomain(savedDoc);
+            if (!mappedCustomer) {
+                throw new AppError(
+                    'Не удалось смаппить клиента после создания',
+                    500,
+                );
+            }
+            return mappedCustomer;
         } catch (error: any) {
-            // Обработка ошибок MongoDB
             if (error.code === 11000 && error.keyPattern?.inn) {
-                // Попробуем найти еще раз на случай гонки
                 if (data.inn) {
-                    // Убедимся, что inn есть перед повторным поиском
                     const existing = await this.findByInn(
                         data.inn,
                         data.userId,
-                    ); // Передаем userId
+                    );
                     if (existing) return existing;
                 }
-                // Если все еще не нашли, выбрасываем ошибку
                 throw new AppError(
-                    `Клиент с ИНН ${data.inn} для пользователя ${data.userId} уже существует (concurrency).`,
+                    `Клиент с ИНН ${data.inn} для пользователя ${data.userId} уже существует.`,
                     409,
                 );
             }
-            // Обработка ошибок валидации Mongoose
             if (error.name === 'ValidationError') {
                 const messages = Object.values(error.errors)
                     .map((e: any) => e.message)
                     .join(', ');
-                console.error(
-                    `Validation error creating customer for user ${data.userId}: ${messages}`,
-                    error.errors,
-                );
                 throw new AppError(
                     `Ошибка валидации при создании клиента: ${messages}`,
                     400,
                 );
             }
-            // Другие ошибки
             console.error(
                 `Error creating customer ${data.name} (INN: ${data.inn}) for user ${data.userId}:`,
                 error,
             );
             throw new AppError('Ошибка при создании клиента', 500);
+        }
+    }
+
+    async findAll(
+        options: FindAllCustomersOptions,
+    ): Promise<{ customers: Customer[]; total: number }> {
+        if (!mongoose.Types.ObjectId.isValid(options.userId)) {
+            throw new AppError(
+                'Неверный формат ID пользователя для поиска клиентов',
+                400,
+            );
+        }
+
+        const {
+            userId,
+            limit = 10,
+            offset = 0,
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+        } = options;
+
+        const userObjectId = new Types.ObjectId(userId);
+        const filterQuery: mongoose.FilterQuery<ICustomerDocument> = {
+            userId: userObjectId,
+        };
+
+        const sortQuery: { [key: string]: 1 | -1 } = {};
+        sortQuery[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+        try {
+            const [customerDocs, total] = await Promise.all([
+                CustomerModel.find(filterQuery)
+                    .sort(sortQuery)
+                    .skip(offset)
+                    .limit(limit)
+                    // .lean() // <-- УБРАЛИ lean()
+                    .exec(),
+                CustomerModel.countDocuments(filterQuery),
+            ]);
+
+            const customers = customerDocs
+                .map((doc) => this.mapToDomain(doc)) // mapToDomain теперь получит Mongoose документы
+                .filter((customer): customer is Customer => customer !== null);
+
+            return { customers, total };
+        } catch (dbError: any) {
+            console.error(
+                `Error in findAll customers for user ${userId}:`,
+                dbError,
+            );
+            throw new AppError(
+                'Ошибка базы данных при получении списка клиентов',
+                500,
+                false,
+            );
+        }
+    }
+
+    async update(
+        id: string,
+        userId: string,
+        data: UpdateCustomerData,
+    ): Promise<Customer | null> {
+        if (
+            !mongoose.Types.ObjectId.isValid(id) ||
+            !mongoose.Types.ObjectId.isValid(userId)
+        ) {
+            return null;
+        }
+
+        const userObjectId = new Types.ObjectId(userId);
+       const updateData: Partial<ICustomerDocument> = {};
+       if (data.name !== undefined) {
+           updateData.name = data.name;
+       }
+       // Преобразуем null в undefined для contactInfo
+       if (data.contactInfo !== undefined) {
+           // Сначала проверяем, что поле вообще пришло
+           updateData.contactInfo =
+               data.contactInfo === null ? undefined : data.contactInfo;
+       }
+       
+        if (Object.keys(updateData).length === 0) {
+            try {
+                const currentCustomerDoc = await CustomerModel.findOne({
+                    _id: id,
+                    userId: userObjectId,
+                }).exec();
+                return this.mapToDomain(currentCustomerDoc);
+            } catch (findError) {
+                console.error(
+                    `Error finding customer ${id} for user ${userId} during no-op update:`,
+                    findError,
+                );
+                throw new AppError(
+                    'Ошибка при поиске клиента для обновления',
+                    500,
+                );
+            }
+        }
+
+        try {
+            const updatedCustomerDoc = await CustomerModel.findOneAndUpdate(
+                { _id: id, userId: userObjectId },
+                { $set: updateData },
+                { new: true, runValidators: true },
+            ).exec(); // Убрали lean, чтобы mapToDomain получил документ
+
+            return this.mapToDomain(updatedCustomerDoc);
+        } catch (dbError: any) {
+            console.error(
+                `Error updating customer ${id} for user ${userId}:`,
+                dbError,
+            );
+            if (dbError.name === 'ValidationError') {
+                const messages = Object.values(dbError.errors)
+                    .map((e: any) => e.message)
+                    .join(', ');
+                throw new AppError(
+                    `Ошибка валидации при обновлении клиента: ${messages}`,
+                    400,
+                );
+            }
+            throw new AppError(
+                'Ошибка базы данных при обновлении клиента',
+                500,
+                false,
+            );
+        }
+    }
+
+    async delete(id: string, userId: string): Promise<boolean> {
+        if (
+            !mongoose.Types.ObjectId.isValid(id) ||
+            !mongoose.Types.ObjectId.isValid(userId)
+        ) {
+            return false;
+        }
+        const userObjectId = new Types.ObjectId(userId);
+        try {
+            const result = await CustomerModel.deleteOne({
+                _id: id,
+                userId: userObjectId,
+            }).exec();
+            return result.deletedCount > 0;
+        } catch (dbError: any) {
+            console.error(
+                `Error deleting customer ${id} for user ${userId}:`,
+                dbError,
+            );
+            throw new AppError(
+                'Ошибка базы данных при удалении клиента',
+                500,
+                false,
+            );
         }
     }
 }
