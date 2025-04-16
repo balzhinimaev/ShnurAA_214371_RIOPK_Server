@@ -33,6 +33,3 @@ export class User {
     //   return this.roles.includes(role);
     // }
 }
-
-// Тип для создания пользователя (без полей, генерируемых БД или логикой)
-export type CreateUserProps = Omit<User, 'id' | 'createdAt' | 'updatedAt'>;

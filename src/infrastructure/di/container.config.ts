@@ -25,6 +25,11 @@ import {
     InvoiceRepositoryToken,
 } from '../../domain/repositories/IInvoiceRepository';
 
+// import { ListUsersUseCase } from '../../application/use-cases/users/list-users.use-case';
+// import { GetUserByIdUseCase } from '../../application/use-cases/users/get-user-by-id.use-case';
+// import { UpdateUserUseCase } from '../../application/use-cases/users/update-user.use-case';
+// import { DeleteUserUseCase } from '../../application/use-cases/users/delete-user.use-case';
+
 // --- Конкретные Реализации (Infrastructure) ---
 // Токен для Mongoose Connection (предполагаем, что он экспортируется из user.repository или общего места)
 import { MongooseConnectionToken } from '../database/mongoose/repositories/user.repository';

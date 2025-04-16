@@ -2,10 +2,9 @@
 import { injectable, inject } from 'tsyringe';
 import mongoose, { Connection, Model } from 'mongoose';
 // Корректные относительные пути к доменным сущностям и интерфейсам
-import { IUserRepository } from '../../../../domain/repositories/IUserRepository';
+import { CreateUserProps, FindAllUsersOptions, IUserRepository, UpdateUserData } from '../../../../domain/repositories/IUserRepository';
 import {
     User,
-    CreateUserProps,
     UserRole,
 } from '../../../../domain/entities/user.entity';
 // Путь к схеме
@@ -274,6 +273,156 @@ export class MongoUserRepository implements IUserRepository {
             // Используем AppError для других ошибок БД
             throw new AppError(
                 'Ошибка базы данных при создании пользователя',
+                500,
+                false,
+            );
+        }
+    }
+
+    // --- findAll ---
+    async findAll(
+        options: FindAllUsersOptions = {},
+    ): Promise<{ users: User[]; total: number }> {
+        const operationId = `findAll_${Date.now()}`;
+        // console.log(`[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] findAll called`); // Опциональный лог
+
+        if (!this.userModel || this.connection?.readyState !== 1) {
+            throw new AppError(
+                `Соединение с БД не готово (state: ${this.connection?.readyState})`,
+                503,
+                false,
+            );
+        }
+
+        const {
+            limit = 10,
+            offset = 0,
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+        } = options;
+
+        const sortQuery: { [key: string]: 1 | -1 } = {};
+        sortQuery[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+        try {
+            const [userDocs, total] = await Promise.all([
+                this.userModel
+                    .find({})
+                    .sort(sortQuery)
+                    .skip(offset)
+                    .limit(limit)
+                    .lean()
+                    .exec(),
+                this.userModel.countDocuments({}),
+            ]);
+
+            const users = userDocs
+                .map((doc) => this.mapToDomain(doc))
+                .filter((user): user is User => user !== null);
+
+            return { users, total };
+        } catch (dbError: any) {
+            console.error(
+                `[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] DB error in findAll:`,
+                dbError,
+            );
+            throw new AppError(
+                'Ошибка базы данных при получении списка пользователей',
+                500,
+                false,
+            );
+        }
+    }
+
+    // --- update ---
+    async update(id: string, data: UpdateUserData): Promise<User | null> {
+        const operationId = `update_${Date.now()}`;
+        // console.log(`[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] update called for ID: ${id}`); // Опциональный лог
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return null;
+        }
+        if (!this.userModel || this.connection?.readyState !== 1) {
+            throw new AppError(
+                `Соединение с БД не готово (state: ${this.connection?.readyState})`,
+                503,
+                false,
+            );
+        }
+
+        const updateData: Partial<IUserDocument> = {};
+        if (data.name !== undefined) updateData.name = data.name;
+        if (data.roles !== undefined) updateData.roles = data.roles;
+
+        if (Object.keys(updateData).length === 0) {
+            // console.warn(`[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] No valid data for update on user ${id}.`); // Опциональный лог
+            const currentUser = await this.findById(id); // Возвращаем без изменений
+            return currentUser;
+        }
+
+        try {
+            const updatedUserDoc = await this.userModel
+                .findByIdAndUpdate(
+                    id,
+                    { $set: updateData },
+                    { new: true, runValidators: true },
+                )
+                .lean()
+                .exec();
+
+            if (!updatedUserDoc) {
+                return null; // Не найден
+            }
+
+            return this.mapToDomain(updatedUserDoc);
+        } catch (dbError: any) {
+            console.error(
+                `[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] DB error in update for user ${id}:`,
+                dbError,
+            );
+            if (dbError.name === 'ValidationError') {
+                const messages = Object.values(dbError.errors)
+                    .map((e: any) => e.message)
+                    .join(', ');
+                throw new AppError(
+                    `Ошибка валидации при обновлении пользователя: ${messages}`,
+                    400,
+                );
+            }
+            throw new AppError(
+                'Ошибка базы данных при обновлении пользователя',
+                500,
+                false,
+            );
+        }
+    }
+
+    // --- delete ---
+    async delete(id: string): Promise<boolean> {
+        const operationId = `delete_${Date.now()}`;
+        // console.log(`[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] delete called for ID: ${id}`); // Опциональный лог
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return false;
+        }
+        if (!this.userModel || this.connection?.readyState !== 1) {
+            throw new AppError(
+                `Соединение с БД не готово (state: ${this.connection?.readyState})`,
+                503,
+                false,
+            );
+        }
+
+        try {
+            const result = await this.userModel.deleteOne({ _id: id }).exec();
+            return result.deletedCount > 0;
+        } catch (dbError: any) {
+            console.error(
+                `[${this.connectionInstanceId ?? 'UNKNOWN_CONN'}][${operationId}] DB error in delete for user ${id}:`,
+                dbError,
+            );
+            throw new AppError(
+                'Ошибка базы данных при удалении пользователя',
                 500,
                 false,
             );
