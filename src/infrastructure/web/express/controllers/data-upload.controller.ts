@@ -10,31 +10,75 @@ export class DataUploadController {
         res: Response,
         next: NextFunction,
     ): Promise<void> {
-        // Файл должен быть загружен upload.middleware и доступен в req.file
+        // 1. Проверяем наличие файла
         if (!req.file) {
-            return next(new AppError('Файл для загрузки не найден', 400));
+            // Ошибка от multer или файл не был отправлен
+            return next(
+                new AppError(
+                    'Файл для загрузки не найден или не соответствует требованиям.',
+                    400,
+                ),
+            );
         }
 
-        const filePath = req.file.path; // Путь к временному файлу
-        const processInvoiceUploadUseCase = container.resolve(
-            ProcessInvoiceUploadUseCase,
-        );
+        // 2. Получаем ID пользователя из req.user (установленного authMiddleware)
+        const userId = req.user?.id;
+        if (!userId) {
+            // Эта проверка важна на случай проблем с authMiddleware
+            console.error(
+                '[DataUploadController] User ID not found in req.user after authMiddleware.',
+            );
+            return next(
+                new AppError(
+                    'Ошибка аутентификации: не удалось определить пользователя.',
+                    401,
+                ),
+            );
+        }
+
+        // 3. Получаем путь к загруженному файлу
+        const filePath = req.file.path;
+        if (!filePath) {
+            // На всякий случай, если multer отработал, но путь не записался
+            console.error(
+                '[DataUploadController] File path is missing in req.file after upload.',
+            );
+            return next(
+                new AppError(
+                    'Ошибка загрузки файла: путь к файлу отсутствует.',
+                    500,
+                ),
+            );
+        }
 
         try {
-            // Запускаем обработку файла
-            const result = await processInvoiceUploadUseCase.execute(filePath);
+            // 4. Получаем экземпляр Use Case из DI контейнера
+            const processInvoiceUploadUseCase = container.resolve(
+                ProcessInvoiceUploadUseCase,
+            );
 
-            // Отправляем результат обработки
+            // 5. Запускаем обработку файла, передавая путь и ID пользователя
+            const result = await processInvoiceUploadUseCase.execute(
+                filePath,
+                userId,
+            );
+
+            // 6. Отправляем успешный результат обработки клиенту
             res.status(200).json({
-                message: 'Файл успешно обработан.',
-                ...result, // Добавляем статистику из результата Use Case
+                message: 'Файл успешно обработан.', // Или можно взять сообщение из result, если оно там есть
+                ...result, // Добавляем статистику (totalRows, processedRows, errors и т.д.)
             });
         } catch (error) {
-            // Передаем ошибки (включая ошибки из Use Case) в error handler
-            // Файл должен удаляться в блоке finally в Use Case
+            // 7. Передаем любые ошибки (из Use Case или другие) в глобальный error handler
+            // Важно: Use Case должен сам позаботиться об удалении временного файла в блоке finally
+            console.error(
+                '[DataUploadController] Error during invoice upload execution:',
+                error,
+            );
             next(error);
         }
     }
 
-    // Можно добавить методы для загрузки других типов данных (платежи, клиенты)
+    // Сюда можно добавить методы для загрузки других типов данных, например:
+    // async uploadPayments(req: Request, res: Response, next: NextFunction): Promise<void> { ... }
 }
