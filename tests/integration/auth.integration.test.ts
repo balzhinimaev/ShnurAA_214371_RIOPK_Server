@@ -250,42 +250,82 @@ describe('Auth API Integration Tests', () => {
             if (!UserModelTest) {
                 throw new Error('UserModelTest not initialized');
             }
-
             const userInDb = await UserModelTest.findOne({
                 email: loginDto.email.toLowerCase(),
             });
-
             if (!userInDb) {
                 throw new Error(
                     `User ${loginDto.email} not found before login test`,
                 );
             }
+            // Убедимся, что ID пользователя для теста совпадает с тем, что в базе
+            expect(loginUserId).toBe(userInDb._id.toString());
 
+            // --- Act ---
             const response = await request(app)
                 .post('/api/v1/auth/login')
                 .send(loginDto);
 
+            // --- Assert - Проверка ответа API ---
             expect(response.status).toBe(200);
             expect(response.body).toHaveProperty('accessToken');
             expect(typeof response.body.accessToken).toBe('string');
             expect(response.body).toHaveProperty('user');
-            expect(response.body.user.id).toBe(loginUserId);
+            expect(response.body.user.id).toBe(loginUserId); // Сверяем ID пользователя
             expect(response.body.user.email).toBe(
                 loginTestUser.email.toLowerCase(),
             );
             expect(response.body.user.name).toBe(loginTestUser.name);
+            expect(response.body.user.roles).toEqual(['ANALYST']); // Проверяем роли в ответе
             expect(response.body.user).not.toHaveProperty('passwordHash');
+            expect(response.body.user).not.toHaveProperty('password');
 
-            // Опциональная проверка JWT
+            // --- Assert - Проверка JWT токена (Используем Вариант 1 - Проверка типа) ---
             try {
+                // Декодируем токен без приведения типа на этом этапе
                 const decoded = jwt.verify(
                     response.body.accessToken,
                     config.jwt.secret,
-                ) as jwt.JwtPayload;
-                expect(decoded.sub).toBe(loginUserId);
-                expect(decoded.roles).toEqual(['ANALYST']); // Проверяем роли в токене
-            } catch (err) {
-                fail('Generated JWT token is invalid or unverifiable');
+                    // Можно добавить опции, если сервис их использует (например, algorithms)
+                    { algorithms: ['HS256'] },
+                );
+
+                // 1. Проверяем, что результат декодирования существует и является объектом
+                expect(decoded).toBeDefined();
+                expect(typeof decoded).toBe('object');
+
+                // 2. Используем Type Guard для безопасного доступа к полям
+                if (typeof decoded === 'object' && decoded !== null) {
+                    // 2.1 Проверяем наличие и тип поля 'sub' (ID пользователя)
+                    expect(decoded).toHaveProperty('sub');
+                    expect(typeof decoded.sub).toBe('string');
+                    expect(decoded.sub).toBe(loginUserId); // Сверяем ID с ожидаемым
+
+                    // 2.2 Проверяем наличие и тип поля 'roles'
+                    expect(decoded).toHaveProperty('roles');
+                    expect(Array.isArray(decoded.roles)).toBe(true);
+                    // Проверяем содержимое массива ролей
+                    expect(decoded.roles).toEqual(['ANALYST']);
+
+                    // 2.3 (Опционально) Проверяем стандартные поля времени, если нужно
+                    expect(decoded).toHaveProperty('iat'); // Issued At
+                    expect(typeof decoded.iat).toBe('number');
+                    expect(decoded).toHaveProperty('exp'); // Expiration Time
+                    expect(typeof decoded.exp).toBe('number');
+                    // Проверяем, что время истечения больше времени выпуска
+                    expect(decoded.exp as number).toBeGreaterThan(
+                        decoded.iat as number,
+                    );
+                } else {
+                    // Если decoded не объект, тест должен провалиться
+                    fail('Decoded JWT payload is not a valid object');
+                }
+            } catch (err: any) {
+                // Если jwt.verify выбросил ошибку (невалидный токен, истекший и т.д.)
+                console.error('JWT Verification Error in test:', err);
+                fail(
+                    `Generated JWT token is invalid or unverifiable: ${err.message}`,
+                );
             }
         });
 
@@ -380,18 +420,10 @@ describe('Auth API Integration Tests', () => {
 
         // If your /me endpoint is not implemented yet, comment out this test
         it('should return current user data with valid token', async () => {
-            // Verify your endpoint path - it might be different or not implemented yet
-            // If it's returning 404, you might need to check your routes configuration
-
-            // IMPORTANT: If the /me endpoint is not implemented yet, comment out this test
-            // or use the next test as a placeholder
-
             const response = await request(app)
                 .get('/api/v1/auth/me')
                 .set('Authorization', `Bearer ${meUserToken}`);
 
-            // If your endpoint exists but returns a different status code,
-            // update the expected status code
             expect(response.status).toBe(200);
             expect(response.body).toBeDefined();
             expect(response.body.id).toBe(meUserId);
@@ -418,14 +450,13 @@ describe('Auth API Integration Tests', () => {
         it('should return 401 if no token is provided', async () => {
             const response = await request(app).get('/api/v1/auth/me');
 
-            // If the endpoint isn't implemented yet, this will return 404 instead of 401
-            // If that's the case, adjust this test accordingly
             expect(response.status).toBe(401);
-
-            // If your endpoint doesn't exist yet (404), comment this out
-            expect(response.body.message).toMatch(
-                /Отсутствует или неверный формат токена/i,
+            // Ожидаем точное сообщение из authMiddleware
+            expect(response.body.message).toBe(
+                'Ошибка аутентификации: токен не предоставлен.',
             );
+            // Или если хотите использовать регулярное выражение, убедитесь, что оно точное:
+            // expect(response.body.message).toMatch(/Ошибка аутентификации: токен не предоставлен\./i);
         });
 
         it('should return 401 if token is invalid (malformed)', async () => {
@@ -433,35 +464,62 @@ describe('Auth API Integration Tests', () => {
                 .get('/api/v1/auth/me')
                 .set('Authorization', 'Bearer this-is-not-a-valid-jwt');
 
-            // If the endpoint isn't implemented yet, this will return 404 instead of 401
-            // If that's the case, adjust this test accordingly
             expect(response.status).toBe(401);
-
-            // If your endpoint doesn't exist yet (404), comment this out
+            // Ожидаем сообщение, которое выдает catch блок или проверка payload в authMiddleware
             expect(response.body.message).toMatch(
-                /Невалидный или истекший токен|Ошибка авторизации/i,
+                /Ошибка аутентификации: .*недействительный токен.*/i,
             );
+            // Можно сделать более точным, если вы знаете конкретную ошибку от jwt.verify,
+            // но часто middleware их обобщает. Давайте проверим на "недействительный токен".
+            // ИЛИ если вы знаете, что именно проверка payload вызывает ошибку:
+            // expect(response.body.message).toBe("Ошибка аутентификации: недействительный токен (payload).");
+            // Выберите то, что соответствует ВАШЕЙ логике в authMiddleware
         });
 
         it('should return 401 if token is signed with wrong secret', async () => {
             const payload = { sub: meUserId, roles: ['ANALYST'] };
             const wrongSecret =
                 'a-completely-different-secret-than-the-real-one';
+            // Генерируем токен с неверным секретом
             const invalidSignatureToken = jwt.sign(payload, wrongSecret, {
                 expiresIn: '1h',
+                algorithm: 'HS256', // Укажем алгоритм явно
             });
 
             const response = await request(app)
                 .get('/api/v1/auth/me')
                 .set('Authorization', `Bearer ${invalidSignatureToken}`);
 
-            // If the endpoint isn't implemented yet, this will return 404 instead of 401
-            // If that's the case, adjust this test accordingly
             expect(response.status).toBe(401);
-
-            // If your endpoint doesn't exist yet (404), comment this out
+            // Ожидаем сообщение, которое выдает catch блок в authMiddleware
+            // после ошибки 'invalid signature' от jwt.verify
             expect(response.body.message).toMatch(
-                /Невалидный или истекший токен|Ошибка авторизации/i,
+                /Ошибка аутентификации: .*недействительный токен.*/i,
+            );
+            // Или более конкретно, если ваш middleware передает сообщение из jwt.verify:
+            // expect(response.body.message).toMatch(/Ошибка аутентификации: invalid signature/i);
+            // Или если он всегда выдает 'недействительный токен (payload)':
+            // expect(response.body.message).toBe("Ошибка аутентификации: недействительный токен (payload).");
+            // Выберите то, что соответствует ВАШЕЙ логике в authMiddleware
+        });
+
+        // (Можно добавить тест на истекший токен)
+        it('should return 401 if token is expired', async () => {
+            const payload = { sub: meUserId, roles: ['ANALYST'] };
+            const expiredToken = jwt.sign(payload, config.jwt.secret, {
+                expiresIn: '-1s',
+                algorithm: 'HS256',
+            });
+
+            const response = await request(app)
+                .get('/api/v1/auth/me')
+                .set('Authorization', `Bearer ${expiredToken}`);
+
+            expect(response.status).toBe(401);
+            // --- ИЗМЕНЕНИЕ ---
+            // Используем toBe для точного сравнения строки
+            expect(response.body.message).toBe(
+                'Ошибка аутентификации: недействительный токен (payload).',
             );
         });
     });

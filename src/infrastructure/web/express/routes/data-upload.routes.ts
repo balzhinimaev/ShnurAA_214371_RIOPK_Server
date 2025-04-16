@@ -2,16 +2,23 @@
 import { Router } from 'express';
 import { DataUploadController } from '../controllers/data-upload.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
+import { roleMiddleware } from '../middlewares/role.middleware'; // Убедитесь, что этот файл существует и экспортирует roleMiddleware
 import { uploadSingleFile } from '../middlewares/upload.middleware'; // Наш middleware для multer
 
 const router = Router();
+// Если ваш контроллер использует DI в конструкторе, используйте:
+// import { container } from 'tsyringe';
+// const dataUploadController = container.resolve(DataUploadController);
+// Иначе, если конструктор пуст или не требует DI:
 const dataUploadController = new DataUploadController();
 
-// --- Применяем middleware аутентификации ко всем роутам в этом файле ---
-// Это гарантирует, что только аутентифицированные пользователи могут загружать данные.
+// 1. Применяем authMiddleware ко всем роутам загрузки
+// Этот middleware проверит наличие и валидность JWT токена.
+// Если токен невалиден или отсутствует, запрос будет отклонен с ошибкой 401.
+// Если токен валиден, он добавит req.user с id и roles.
 router.use(authMiddleware);
 
-// --- Описание эндпоинта загрузки счетов ---
+// --- Эндпоинт загрузки счетов ---
 /**
  * @openapi
  * /data-uploads/invoices:
@@ -19,7 +26,7 @@ router.use(authMiddleware);
  *     tags:
  *       - Загрузка Данных
  *     summary: Загрузка CSV файла со счетами
- *     description: Принимает CSV файл в формате multipart/form-data, парсит его и создает соответствующие записи счетов и клиентов (при необходимости) в системе. Возвращает статистику по обработке файла.
+ *     description: Принимает CSV файл в формате multipart/form-data, парсит его и создает соответствующие записи счетов и клиентов (при необходимости) в системе. Возвращает статистику по обработке файла. Требует роли ADMIN или ANALYST.
  *     security:
  *       - bearerAuth: [] # Указываем, что для этого эндпоинта требуется аутентификация Bearer
  *     requestBody:
@@ -51,6 +58,7 @@ router.use(authMiddleware);
  *                   type: string
  *                   example: Файл успешно обработан.
  *                 # Используем allOf для объединения message и результата обработки
+ *                 # Убедитесь, что схема ProcessUploadResult определена в вашем swagger.config.ts
  *                 allOf:
  *                   - $ref: '#/components/schemas/ProcessUploadResult' # Ссылка на схему с результатами
  *       '400':
@@ -60,7 +68,13 @@ router.use(authMiddleware);
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse' # Ссылка на общую схему ошибки
  *       '401':
- *         description: Ошибка авторизации - пользователь не аутентифицирован (JWT токен отсутствует или невалиден).
+ *         description: Ошибка аутентификации - пользователь не аутентифицирован (JWT токен отсутствует или невалиден).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403': # Добавлено описание для ошибки 403
+ *         description: Доступ запрещен - у пользователя нет необходимых прав (требуется роль ADMIN или ANALYST).
  *         content:
  *           application/json:
  *             schema:
@@ -74,13 +88,14 @@ router.use(authMiddleware);
  */
 router.post(
     '/invoices', // Путь относительно префикса /api/v1/data-uploads
+    roleMiddleware(['ADMIN', 'ANALYST']), // Middleware проверки ролей!
     uploadSingleFile, // Middleware от multer для обработки поля 'file'
     dataUploadController.uploadInvoices, // Обработчик контроллера
 );
 
 // Сюда можно будет добавить роуты для загрузки других типов данных, например:
-// router.post('/payments', uploadSingleFile, dataUploadController.uploadPayments);
-// router.post('/customers', uploadSingleFile, dataUploadController.uploadCustomers);
+// router.post('/payments', roleMiddleware(['ADMIN', 'ANALYST']), uploadSingleFile, dataUploadController.uploadPayments);
+// router.post('/customers', roleMiddleware(['ADMIN']), uploadSingleFile, dataUploadController.uploadCustomers); // Пример: клиентами управляет только админ
 
 // Экспортируем роутер для подключения в главном файле роутов (routes/index.ts)
 export default router;

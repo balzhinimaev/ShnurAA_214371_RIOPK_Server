@@ -91,13 +91,21 @@ export class AuthController {
         res: Response,
         next: NextFunction,
     ): Promise<void> {
-        // req.user должен быть заполнен authMiddleware (это JwtPayload)
-        const userId = req.user?.sub;
+        // req.user должен быть заполнен authMiddleware и содержать поля id и roles
+        // --- ИСПРАВЛЕНИЕ ---
+        const userId = req.user?.id; // <-- Читаем поле 'id', которое установил authMiddleware
 
         if (!userId) {
-            // Этого не должно случиться, если authMiddleware отработал правильно
+            // Эта ситуация не должна возникать, если authMiddleware отработал правильно
+            // и установил req.user
+            console.error(
+                '[AuthController.getMe] req.user or req.user.id is undefined. Auth middleware might have failed.',
+            );
             return next(
-                new AppError('ID пользователя не найден в токене', 401),
+                new AppError(
+                    'Ошибка аутентификации: не удалось определить пользователя.',
+                    401,
+                ),
             );
         }
 
@@ -105,20 +113,28 @@ export class AuthController {
             // Получаем репозиторий для поиска пользователя
             const userRepository =
                 container.resolve<IUserRepository>(UserRepositoryToken);
+            // Ищем пользователя по ID, полученному из req.user.id
             const user = await userRepository.findById(userId);
 
             if (!user) {
-                // Если пользователь из токена не найден в БД
+                // Если пользователь из токена не найден в БД (возможно, удален)
+                console.warn(
+                    `[AuthController.getMe] User with ID ${userId} from token not found in DB.`,
+                );
                 return next(new AppError('Пользователь не найден', 404));
             }
 
             // Преобразуем найденного пользователя в DTO для ответа
             const userResponse = plainToInstance(UserResponseDto, user, {
-                excludeExtraneousValues: true,
+                excludeExtraneousValues: true, // Убираем лишние поля (например, passwordHash)
             });
 
             res.status(200).json(userResponse);
         } catch (error) {
+            console.error(
+                `[AuthController.getMe] Error fetching user ${userId}:`,
+                error,
+            );
             next(error); // Передаем ошибки дальше
         }
     }
