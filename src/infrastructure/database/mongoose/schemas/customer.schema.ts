@@ -1,23 +1,32 @@
 // src/infrastructure/database/mongoose/schemas/customer.schema.ts
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 import { Customer } from '../../../../domain/entities/customer.entity';
 
 // Исключаем расчетные поля из документа
 export interface ICustomerDocument
     extends Omit<Customer, 'id' | 'totalDebt' | 'overdueDebt'>,
-        Document {}
+        Document {
+    userId: Types.ObjectId;
+}
 
 const CustomerSchema = new Schema<ICustomerDocument>(
     {
         name: { type: String, required: true, index: true },
         inn: { type: String, sparse: true, unique: true }, // Уникальный, но может отсутствовать
         contactInfo: { type: String },
+                userId: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+            index: true,
+        },
     },
     {
         timestamps: true,
         toJSON: {
             transform: (_doc, ret) => {
                 ret.id = ret._id.toString();
+                if (ret.userId) ret.userId = ret.userId.toString();
                 delete ret._id;
                 delete ret.__v;
                 return ret;
@@ -26,6 +35,7 @@ const CustomerSchema = new Schema<ICustomerDocument>(
         toObject: {
             transform: (_doc, ret) => {
                 ret.id = ret._id.toString();
+                if (ret.userId) ret.userId = ret.userId.toString();
                 delete ret._id;
                 delete ret.__v;
                 return ret;
@@ -33,6 +43,9 @@ const CustomerSchema = new Schema<ICustomerDocument>(
         },
     },
 );
+
+// Добавляем составной уникальный индекс для ИНН в рамках одного пользователя (если ИНН есть)
+CustomerSchema.index({ userId: 1, inn: 1 }, { unique: true, sparse: true });
 
 export const CustomerModel = model<ICustomerDocument>(
     'Customer',

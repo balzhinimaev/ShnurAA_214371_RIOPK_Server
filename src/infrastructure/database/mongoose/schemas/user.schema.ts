@@ -49,6 +49,6 @@ export const UserSchema = new Schema<IUserDocument>(
 );
 
 // Индекс для ускорения поиска по email
-UserSchema.index({ email: 1 });
+// UserSchema.index({ email: 1 });
 
 export const UserModel = model<IUserDocument>('User', UserSchema);

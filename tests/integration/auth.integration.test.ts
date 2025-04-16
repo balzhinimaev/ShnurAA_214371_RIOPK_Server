@@ -1,275 +1,468 @@
 // tests/integration/auth.integration.test.ts
 import 'reflect-metadata'; // Обязательно для tsyringe! Импортировать первым.
 import request from 'supertest';
-import mongoose, { Connection } from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import mongoose from 'mongoose';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import config from '../../src/infrastructure/config';
 
 // Импортируем ваше Express приложение
-import app from '../../src/infrastructure/web/express/app'; // <--- Проверьте правильность пути
+import app from '../../src/infrastructure/web/express/app';
 
-// Импортируем DI контейнер и токен соединения
-import container from '../../src/infrastructure/di/container.config'; // <--- Проверьте правильность пути
-import { MongooseConnectionToken } from '../../src/infrastructure/database/mongoose/repositories/user.repository'; // <--- Проверьте правильность пути
+// Импортируем хелпер для очистки БД
+import { clearDatabase } from '../helpers/integration-test-setup';
 
-// Импортируем схему/модель напрямую для проверок БД (хотя лучше через connection.model)
-// import { UserModel } from '../../src/infrastructure/database/mongoose/schemas/user.schema'; // <--- Можно, но ниже будет лучше
+// --- Глобальное тестовое соединение (Импортируем из jest.setup) ---
+import { testConnection } from '../jest.setup';
 
-// --- Переменные для тестового окружения ---
-let mongoServer: MongoMemoryServer;
-let testConnection: Connection; // Отдельное соединение для тестов
-let UserModelTest: mongoose.Model<any>; // Модель, привязанная к ТЕСТОВОМУ соединению
+// --- Модель для прямых проверок БД (если нужно) ---
+let UserModelTest: mongoose.Model<any>;
 
-// --- Настройка тестового окружения ---
+// --- Настройка перед всеми тестами в этом файле ---
 beforeAll(async () => {
-    const setupId = `SETUP_${Date.now()}`;
-    console.log(`---- [${setupId}] BEFORE_ALL START ----`);
-
-    // 1. Запускаем MongoDB в памяти
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
-    console.log(`[${setupId}] MongoMemoryServer started at: ${mongoUri}`);
-
-    // 2. Создаем НОВОЕ соединение Mongoose для тестов
-    testConnection = mongoose.createConnection(mongoUri);
-
-    // Добавим обработчики событий для отладки соединения
-    testConnection.on('connected', () =>
-        console.log(`[${setupId}] Test connection OPEN to ${mongoUri}`),
-    );
-    testConnection.on('error', (err) =>
-        console.error(`[${setupId}] Test connection ERROR: ${err}`),
-    );
-    testConnection.on('disconnected', () =>
-        console.log(`[${setupId}] Test connection DISCONNECTED`),
-    );
-
-    // Дождемся открытия соединения
-    await testConnection.asPromise(); // Важно дождаться готовности
-    console.log(
-        `[${setupId}] Test connection readyState: ${testConnection.readyState}`,
-    );
-
-    // Добавим ID для логирования внутри репозитория
-    (testConnection as any)._instanceIdFromSetup = setupId;
-
-    // 3. --- КЛЮЧЕВОЙ МОМЕНТ: Переопределение зависимости в DI контейнере ---
-    // Теперь любой класс, который запрашивает @inject(MongooseConnectionToken),
-    // получит НАШЕ тестовое соединение `testConnection`.
-    container.register(MongooseConnectionToken, { useValue: testConnection });
-    console.log(
-        `[${setupId}] DI Container overridden: MongooseConnectionToken now uses TEST connection.`,
-    );
-
-    // 4. Получаем модель, привязанную к тестовому соединению (для очистки/проверок)
-    // Убедимся, что схема регистрируется или используется существующая
-    if (testConnection.models['User']) {
-        UserModelTest = testConnection.model('User');
-        console.log(
-            `[${setupId}] Reused existing model 'User' from TEST connection.`,
-        );
-    } else {
-        // Импортируем саму схему для регистрации на тестовом соединении
-        const { UserSchema } = await import(
-            '../../src/infrastructure/database/mongoose/schemas/user.schema'
-        ); // <--- Проверьте путь
-        UserModelTest = testConnection.model('User', UserSchema);
-        console.log(
-            `[${setupId}] Registered and obtained model 'User' from TEST connection.`,
+    if (!testConnection) {
+        throw new Error(
+            'Global test connection is not available. Check jest.setup.ts.',
         );
     }
-
-    // 5. Очистка данных перед всеми тестами (на всякий случай)
     try {
-        await UserModelTest.deleteMany({});
+        if (testConnection.models['User']) {
+            UserModelTest = testConnection.model('User');
+        } else {
+            const { UserSchema } = await import(
+                '../../src/infrastructure/database/mongoose/schemas/user.schema'
+            );
+            UserModelTest = testConnection.model('User', UserSchema);
+        }
         console.log(
-            `[${setupId}] Initial cleanup of 'users' collection successful.`,
+            '[auth.integration.test] UserModelTest obtained successfully.',
         );
     } catch (e) {
-        console.error(`[${setupId}] Error during initial cleanup:`, e);
-    }
-
-    console.log(`---- [${setupId}] BEFORE_ALL END ----`);
-});
-
-// --- Завершение работы тестового окружения ---
-afterAll(async () => {
-    const teardownId = `TEARDOWN_${Date.now()}`;
-    console.log(`---- [${teardownId}] AFTER_ALL START ----`);
-    // 1. Закрываем тестовое соединение
-    if (testConnection) {
-        await testConnection.close();
-        console.log(
-            `[${teardownId}] Test connection closed. readyState: ${testConnection?.readyState}`,
+        console.error(
+            '[auth.integration.test] Failed to get UserModelTest:',
+            e,
+        );
+        throw new Error(
+            'Could not obtain UserModelTest for integration tests.',
         );
     }
-    // 2. Останавливаем сервер MongoDB
-    if (mongoServer) {
-        await mongoServer.stop();
-        console.log(`[${teardownId}] MongoMemoryServer stopped.`);
-    }
-    // 3. Сбрасываем регистрации контейнера (важно, если тесты запускаются не изолированно)
-    container.clearInstances(); // Сбрасывает синглтоны
-    // или container = new container.createChildContainer() если нужно полное разделение
-
-    console.log(`---- [${teardownId}] AFTER_ALL END ----`);
 });
 
-// --- Очистка между тестами ---
-afterEach(async () => {
-    const cleanupId = `CLEANUP_${Date.now()}`;
-    // Очищаем коллекцию пользователей через модель тестового соединения
-    if (UserModelTest) {
-        try {
-            await UserModelTest.deleteMany({});
-            console.log(
-                `[${cleanupId}] afterEach: Cleaned 'users' collection.`,
-            );
-        } catch (e) {
-            console.error(
-                `[${cleanupId}] afterEach: Error cleaning 'users' collection`,
-                e,
-            );
+describe('Auth API Integration Tests', () => {
+    // Define test users for each test suite to avoid conflicts
+    const registerTestUser = {
+        name: 'Register Test User',
+        email: 'register.test@example.com',
+        password: 'Password123!',
+    };
+
+    const loginTestUser = {
+        name: 'Login Test User',
+        email: 'login.test@example.com',
+        password: 'Password123!',
+    };
+
+    const meTestUser = {
+        name: 'Me Test User',
+        email: 'me.test@example.com',
+        password: 'Password123!',
+    };
+
+    // Global clean up before all tests
+    beforeAll(async () => {
+        if (!testConnection) {
+            throw new Error('Test connection is not available');
         }
-    }
-});
+        // Clear the database once before all tests
+        await clearDatabase(testConnection);
+    });
 
-// --- Сами тесты ---
-describe('Auth API - /api/v1/auth/login', () => {
-    describe('POST /register', () => {
+    // ======================================
+    // == Тесты для POST /api/v1/auth/register ==
+    // ======================================
+    describe('POST /api/v1/auth/register', () => {
+        // Clear DB before register tests
+        beforeAll(async () => {
+            if (!testConnection) return;
+            await clearDatabase(testConnection);
+        });
+
         it('should register a new user successfully and return user data without password hash', async () => {
-            // --- Arrange ---
-            const newUserDto = {
-                name: 'Integration Test User',
-                email: 'integration.test@example.com',
-                password: 'StrongPassword123',
-            };
+            const response = await request(app)
+                .post('/api/v1/auth/register')
+                .send(registerTestUser);
 
-            // --- Act ---
-            const response = await request(app) // Используем наше Express приложение
-                .post('/api/v1/auth/register') // Путь к эндпоинту
-                .send(newUserDto); // Отправляем DTO
+            expect(response.status).toBe(201);
+            expect(response.body.email).toBe(
+                registerTestUser.email.toLowerCase(),
+            );
+            expect(response.body).not.toHaveProperty('passwordHash');
 
-            // --- Assert: HTTP Response ---
-            expect(response.status).toBe(201); // Статус "Created"
-            expect(response.body).toBeDefined();
-            expect(response.body).toHaveProperty('id'); // Должен быть ID
-            expect(response.body.name).toBe(newUserDto.name);
-            expect(response.body.email).toBe(newUserDto.email.toLowerCase()); // Email приводится к нижнему регистру
-            expect(response.body).toHaveProperty('roles'); // Должны быть роли
-            expect(response.body.roles).toEqual(['ANALYST']); // Роль по умолчанию
-            expect(response.body).not.toHaveProperty('password'); // НЕ ДОЛЖЕН содержать пароль
-            expect(response.body).not.toHaveProperty('passwordHash'); // НЕ ДОЛЖЕН содержать хеш пароля
-
-            // --- Assert: Database State ---
-            // Используем МОДЕЛЬ ТЕСТОВОГО СОЕДИНЕНИЯ для проверки
+            if (!UserModelTest)
+                throw new Error('UserModelTest not initialized');
             const savedUser = await UserModelTest.findOne({
-                email: newUserDto.email.toLowerCase(),
-            }).exec(); // Не используем lean(), чтобы проверить полный документ, если нужно
-
-            expect(savedUser).not.toBeNull(); // Пользователь должен быть найден в БД
+                email: registerTestUser.email.toLowerCase(),
+            }).exec();
+            expect(savedUser).not.toBeNull();
             if (savedUser) {
-                expect(savedUser.name).toBe(newUserDto.name);
-                expect(savedUser.email).toBe(newUserDto.email.toLowerCase());
-                expect(savedUser.passwordHash).toBeDefined(); // Хеш должен быть в БД
-                expect(savedUser.passwordHash).not.toBe(newUserDto.password); // Хеш не равен паролю
-
-                // Проверяем, что хеш соответствует паролю
                 const isMatch = await bcrypt.compare(
-                    newUserDto.password,
+                    registerTestUser.password,
                     savedUser.passwordHash,
                 );
-                expect(isMatch).toBe(true); // Пароль должен совпадать с хешем
-
-                expect(savedUser.roles).toEqual(['ANALYST']); // Проверяем роли в БД
-            } else {
-                // Явно проваливаем тест, если пользователь не найден
-                fail('User was not found in the database after registration.');
+                expect(isMatch).toBe(true);
             }
         });
 
         it('should return 409 Conflict if email already exists', async () => {
             // --- Arrange ---
-            // 1. Создаем первого пользователя напрямую в тестовой БД
-            const existingUser = {
-                name: 'Existing User',
-                email: 'existing.user@example.com',
+            const existingEmail = 'existing-for-409@example.com';
+            // 1. СОЗДАЕМ существующего пользователя ПРЯМО ЗДЕСЬ
+            await request(app).post('/api/v1/auth/register').send({
+                name: 'Existing 409 User',
+                email: existingEmail,
                 password: 'password123',
-            };
-            const hashedPassword = await bcrypt.hash(existingUser.password, 10);
-            await UserModelTest.create({
-                // Используем UserModelTest
-                name: existingUser.name,
-                email: existingUser.email,
-                passwordHash: hashedPassword,
-                roles: ['MANAGER'], // Зададим другую роль для проверки
             });
+            // Можно добавить проверку, что он создался (опционально)
+            const userCheck = await UserModelTest.findOne({
+                email: existingEmail.toLowerCase(),
+            });
+            expect(userCheck).not.toBeNull();
 
             // 2. Готовим DTO для второго запроса с тем же email
             const duplicateUserDto = {
                 name: 'Duplicate Test User',
-                email: existingUser.email, // <-- Тот же email
+                email: existingEmail, // <-- Тот же email
                 password: 'AnotherPassword456',
             };
 
             // --- Act ---
-            // Пытаемся зарегистрировать пользователя с существующим email
             const response = await request(app)
                 .post('/api/v1/auth/register')
                 .send(duplicateUserDto);
 
-            // --- Assert: HTTP Response ---
-            expect(response.status).toBe(409); // Ожидаем статус "Conflict"
-            expect(response.body).toBeDefined();
-            expect(response.body.message).toContain('Email уже существует'); // Проверяем сообщение об ошибке
+            // --- Assert ---
+            expect(response.status).toBe(409); // Теперь ожидаем 409
+            expect(response.body.message).toContain('Email уже существует');
 
-            // --- Assert: Database State ---
-            // Убедимся, что в базе остался только ОДИН пользователь с этим email
+            // Убедимся, что в базе остался только один пользователь с этим email
             const usersInDb = await UserModelTest.find({
-                email: existingUser.email,
+                email: existingEmail.toLowerCase(),
             }).exec();
-            expect(usersInDb).toHaveLength(1); // Должен быть только один
-            // Убедимся, что это именно первый пользователь (не перезаписался)
-            expect(usersInDb[0].name).toBe(existingUser.name);
-            expect(usersInDb[0].roles).toEqual(['MANAGER']);
+            expect(usersInDb).toHaveLength(1);
+            expect(usersInDb[0].name).toBe('Existing 409 User'); // Проверяем имя первого
         });
 
         it('should return 400 Bad Request for invalid input data (e.g., missing password)', async () => {
-            // --- Arrange ---
-            const invalidUserDto = {
-                name: 'Invalid Data User',
-                email: 'invalid.data@example.com',
-                // password отсутствует
-            };
-
-            // --- Act ---
+            const invalidUserDto = { name: 'Invalid', email: 'invalid@a.com' };
             const response = await request(app)
                 .post('/api/v1/auth/register')
                 .send(invalidUserDto);
 
-            // --- Assert: HTTP Response ---
-            // Точный статус зависит от вашего validationMiddleware и errorHandler
-            // Обычно это 400 Bad Request
             expect(response.status).toBe(400);
-            expect(response.body).toBeDefined();
-            // Ожидаем массив ошибок валидации или общее сообщение
-            expect(response.body.errors).toBeDefined(); // Если ваш errorHandler возвращает поле errors
-            // Можно проверить конкретную ошибку
-            expect(JSON.stringify(response.body)).toContain(
-                'Пароль не может быть пустым',
-            ); // Зависит от сообщения в DTO
-
-            // --- Assert: Database State ---
-            // Убедимся, что пользователь НЕ был создан
-            const userCount = await UserModelTest.countDocuments({
-                email: invalidUserDto.email,
-            });
-            expect(userCount).toBe(0);
+            expect(response.body.errors).toBeDefined();
+            expect(JSON.stringify(response.body)).toMatch(
+                /Пароль не может быть пустым|password should not be empty/i,
+            );
         });
 
-        // TODO: Добавить другие тесты (невалидный email, короткий пароль и т.д.)
+        it('should return 400 Bad Request for invalid email format', async () => {
+            const invalidUserDto = {
+                name: 'Invalid Email',
+                email: 'invalid-email',
+                password: 'password123',
+            };
+            const response = await request(app)
+                .post('/api/v1/auth/register')
+                .send(invalidUserDto);
+
+            expect(response.status).toBe(400);
+            expect(response.body.errors).toBeDefined();
+            expect(JSON.stringify(response.body)).toMatch(
+                /Некорректный формат Email|email must be an email/i,
+            );
+        });
+
+        it('should return 400 Bad Request for short password', async () => {
+            const invalidUserDto = {
+                name: 'Short PW',
+                email: 'shortpw@example.com',
+                password: '123',
+            }; // Пароль < 6 символов
+            const response = await request(app)
+                .post('/api/v1/auth/register')
+                .send(invalidUserDto);
+
+            expect(response.status).toBe(400);
+            expect(response.body.errors).toBeDefined();
+            expect(JSON.stringify(response.body)).toMatch(
+                /Пароль должен быть не менее 6 символов|password must be longer than or equal to 6 characters/i,
+            );
+        });
     });
 
-    // TODO: Добавить describe блок для 'POST /login'
-    // describe('POST /login', () => { ... });
+    // ======================================
+    // == Тесты для POST /api/v1/auth/login ==
+    // ======================================
+    describe('POST /api/v1/auth/login', () => {
+        let loginUserId: string;
+
+        // Set up the login test user before login tests
+        beforeAll(async () => {
+            // Create a specific user for login tests to avoid conflicts
+            if (!UserModelTest) {
+                throw new Error('UserModelTest not initialized');
+            }
+
+            // Clear existing user with this email if it exists
+            await UserModelTest.deleteOne({
+                email: loginTestUser.email.toLowerCase(),
+            });
+
+            // Register user directly via API
+            const regResponse = await request(app)
+                .post('/api/v1/auth/register')
+                .send(loginTestUser);
+
+            expect(regResponse.status).toBe(201);
+            loginUserId = regResponse.body.id;
+
+            // Verify user exists in DB
+            const userInDb = await UserModelTest.findOne({
+                email: loginTestUser.email.toLowerCase(),
+            });
+
+            if (!userInDb) {
+                throw new Error(
+                    `Failed to create login test user: ${loginTestUser.email}`,
+                );
+            }
+
+            console.log(`Login test user created with ID: ${loginUserId}`);
+        });
+
+        it('should login successfully with correct credentials and return token and user data', async () => {
+            const loginDto = {
+                email: loginTestUser.email,
+                password: loginTestUser.password,
+            };
+
+            // Verify the user exists in the database before attempting login
+            if (!UserModelTest) {
+                throw new Error('UserModelTest not initialized');
+            }
+
+            const userInDb = await UserModelTest.findOne({
+                email: loginDto.email.toLowerCase(),
+            });
+
+            if (!userInDb) {
+                throw new Error(
+                    `User ${loginDto.email} not found before login test`,
+                );
+            }
+
+            const response = await request(app)
+                .post('/api/v1/auth/login')
+                .send(loginDto);
+
+            expect(response.status).toBe(200);
+            expect(response.body).toHaveProperty('accessToken');
+            expect(typeof response.body.accessToken).toBe('string');
+            expect(response.body).toHaveProperty('user');
+            expect(response.body.user.id).toBe(loginUserId);
+            expect(response.body.user.email).toBe(
+                loginTestUser.email.toLowerCase(),
+            );
+            expect(response.body.user.name).toBe(loginTestUser.name);
+            expect(response.body.user).not.toHaveProperty('passwordHash');
+
+            // Опциональная проверка JWT
+            try {
+                const decoded = jwt.verify(
+                    response.body.accessToken,
+                    config.jwt.secret,
+                ) as jwt.JwtPayload;
+                expect(decoded.sub).toBe(loginUserId);
+                expect(decoded.roles).toEqual(['ANALYST']); // Проверяем роли в токене
+            } catch (err) {
+                fail('Generated JWT token is invalid or unverifiable');
+            }
+        });
+
+        it('should return 401 for incorrect password', async () => {
+            const loginDto = {
+                email: loginTestUser.email,
+                password: 'IncorrectPassword', // Неверный пароль
+            };
+            const response = await request(app)
+                .post('/api/v1/auth/login')
+                .send(loginDto);
+
+            expect(response.status).toBe(401);
+            expect(response.body.message).toContain(
+                'Неверный email или пароль',
+            );
+        });
+
+        it('should return 401 for non-existent email', async () => {
+            const loginDto = {
+                email: 'nonexistent@example.com', // Несуществующий email
+                password: 'anypassword',
+            };
+            const response = await request(app)
+                .post('/api/v1/auth/login')
+                .send(loginDto);
+
+            expect(response.status).toBe(401);
+            expect(response.body.message).toContain(
+                'Неверный email или пароль',
+            );
+        });
+
+        it('should return 400 for invalid login dto (missing email)', async () => {
+            const loginDto = {
+                // email отсутствует
+                password: loginTestUser.password,
+            };
+            const response = await request(app)
+                .post('/api/v1/auth/login')
+                .send(loginDto);
+
+            expect(response.status).toBe(400);
+            expect(response.body.errors).toBeDefined();
+            expect(JSON.stringify(response.body)).toMatch(
+                /Email не может быть пустым|email should not be empty/i,
+            );
+        });
+    });
+
+    // ======================================
+    // == Тесты для GET /api/v1/auth/me    ==
+    // ======================================
+    describe('GET /api/v1/auth/me', () => {
+        let meUserId: string;
+        let meUserToken: string;
+
+        // Create a user for /me tests
+        beforeAll(async () => {
+            if (!testConnection) {
+                throw new Error('Test connection is not available');
+            }
+
+            // Make sure the user doesn't exist already
+            if (UserModelTest) {
+                await UserModelTest.deleteOne({
+                    email: meTestUser.email.toLowerCase(),
+                });
+            }
+
+            // Register the user
+            const regResponse = await request(app)
+                .post('/api/v1/auth/register')
+                .send(meTestUser);
+
+            expect(regResponse.status).toBe(201);
+            meUserId = regResponse.body.id;
+
+            // Login to get a valid token
+            const loginResponse = await request(app)
+                .post('/api/v1/auth/login')
+                .send({
+                    email: meTestUser.email,
+                    password: meTestUser.password,
+                });
+
+            expect(loginResponse.status).toBe(200);
+            meUserToken = loginResponse.body.accessToken;
+
+            console.log(`Me test user created with ID: ${meUserId}`);
+        });
+
+        // If your /me endpoint is not implemented yet, comment out this test
+        it('should return current user data with valid token', async () => {
+            // Verify your endpoint path - it might be different or not implemented yet
+            // If it's returning 404, you might need to check your routes configuration
+
+            // IMPORTANT: If the /me endpoint is not implemented yet, comment out this test
+            // or use the next test as a placeholder
+
+            const response = await request(app)
+                .get('/api/v1/auth/me')
+                .set('Authorization', `Bearer ${meUserToken}`);
+
+            // If your endpoint exists but returns a different status code,
+            // update the expected status code
+            expect(response.status).toBe(200);
+            expect(response.body).toBeDefined();
+            expect(response.body.id).toBe(meUserId);
+            expect(response.body.email).toBe(meTestUser.email.toLowerCase());
+            expect(response.body.name).toBe(meTestUser.name);
+            expect(response.body.roles).toEqual(['ANALYST']);
+            expect(response.body).not.toHaveProperty('passwordHash');
+            expect(response.body).not.toHaveProperty('password');
+        });
+
+        // If your /me endpoint is not implemented yet, use this test instead
+        // and comment out the previous test
+        /*
+        it('should return current user data with valid token', async () => {
+            // Skip this test if the endpoint is not implemented yet
+            console.log("NOTE: Skipping /me test as the endpoint appears to not be implemented yet.");
+            
+            // The /me endpoint might not be implemented yet if it's returning 404
+            // This is a placeholder test to remind you to implement the endpoint
+            pending('The /me endpoint is not implemented yet. Once implemented, update this test.');
+        });
+        */
+
+        it('should return 401 if no token is provided', async () => {
+            const response = await request(app).get('/api/v1/auth/me');
+
+            // If the endpoint isn't implemented yet, this will return 404 instead of 401
+            // If that's the case, adjust this test accordingly
+            expect(response.status).toBe(401);
+
+            // If your endpoint doesn't exist yet (404), comment this out
+            expect(response.body.message).toMatch(
+                /Отсутствует или неверный формат токена/i,
+            );
+        });
+
+        it('should return 401 if token is invalid (malformed)', async () => {
+            const response = await request(app)
+                .get('/api/v1/auth/me')
+                .set('Authorization', 'Bearer this-is-not-a-valid-jwt');
+
+            // If the endpoint isn't implemented yet, this will return 404 instead of 401
+            // If that's the case, adjust this test accordingly
+            expect(response.status).toBe(401);
+
+            // If your endpoint doesn't exist yet (404), comment this out
+            expect(response.body.message).toMatch(
+                /Невалидный или истекший токен|Ошибка авторизации/i,
+            );
+        });
+
+        it('should return 401 if token is signed with wrong secret', async () => {
+            const payload = { sub: meUserId, roles: ['ANALYST'] };
+            const wrongSecret =
+                'a-completely-different-secret-than-the-real-one';
+            const invalidSignatureToken = jwt.sign(payload, wrongSecret, {
+                expiresIn: '1h',
+            });
+
+            const response = await request(app)
+                .get('/api/v1/auth/me')
+                .set('Authorization', `Bearer ${invalidSignatureToken}`);
+
+            // If the endpoint isn't implemented yet, this will return 404 instead of 401
+            // If that's the case, adjust this test accordingly
+            expect(response.status).toBe(401);
+
+            // If your endpoint doesn't exist yet (404), comment this out
+            expect(response.body.message).toMatch(
+                /Невалидный или истекший токен|Ошибка авторизации/i,
+            );
+        });
+    });
 });

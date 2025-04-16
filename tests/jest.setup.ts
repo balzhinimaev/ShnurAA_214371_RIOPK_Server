@@ -1,38 +1,84 @@
 // tests/jest.setup.ts
-import 'reflect-metadata'; // Необходимо для tsyringe
+
+import 'reflect-metadata';
 import { container } from 'tsyringe';
 import { Connection } from 'mongoose';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 
-// --- Импортируйте ваш токен для соединения Mongoose ---
-// Пример: Замените на ваш реальный путь и имя токена
-import { MongooseConnectionToken } from '../src/infrastructure/database/mongoose/repositories/user.repository';
+// --- Токены и Реализации для перерегистрации ---
+// База данных
+import {
+    MongooseConnectionToken,
+    MongoUserRepository,
+} from '../src/infrastructure/database/mongoose/repositories/user.repository';
+import {
+    UserRepositoryToken,
+    IUserRepository,
+} from '../src/domain/repositories/IUserRepository';
+// Хешер
+import {
+    PasswordHasherToken,
+    IPasswordHasher,
+} from '../src/application/interfaces/IPasswordHasher';
+import { BcryptPasswordHasher } from '../src/infrastructure/services/bcrypt.password-hasher'; // <-- Убедитесь, что путь правильный
+// JWT Сервис
+import {
+    JwtServiceToken,
+    IJwtService,
+} from '../src/application/interfaces/IJwtService';
+import { JsonWebTokenService } from '../src/infrastructure/services/jsonwebtoken.service'; // <-- Убедитесь, что путь правильный
+// ---> ДОБАВЬТЕ ДРУГИЕ РЕПОЗИТОРИИ/СЕРВИСЫ, ЕСЛИ НУЖНЫ <---
 
-// --- Импортируйте хелперы ---
+// Хелперы
 import {
     startMongoMemoryServer,
     stopMongoMemoryServer,
-} from './helpers/integration-test-setup'; // <-- УКАЖИ ПРАВИЛЬНЫЙ ПУТЬ
+} from './helpers/integration-test-setup';
 
-// Переменная для хранения тестового соединения
-// Экспортируем ее, чтобы тесты могли ее использовать для компиляции моделей
+let mongodInstance: MongoMemoryServer | undefined;
 export let testConnection: Connection;
 
-// Глобальная настройка перед всеми тестами
 beforeAll(async () => {
     console.log(
         '[JEST_SETUP] Global beforeAll: Starting MongoDB and configuring DI...',
     );
     try {
-        // 1. Запускаем сервер и получаем соединение из хелпера
         const setupResult = await startMongoMemoryServer();
-        testConnection = setupResult.connection; // Сохраняем соединение
+        mongodInstance = setupResult.mongodInstance;
+        testConnection = setupResult.connection;
 
-        // 2. Регистрируем тестовое соединение в DI контейнере
-        // Используйте метод вашего DI контейнера (registerInstance, bind/toConstantValue и т.д.)
+        // 1. Переопределяем соединение БД
         container.registerInstance(MongooseConnectionToken, testConnection);
+        console.log(
+            `[JEST_SETUP] Overridden DI token ${String(MongooseConnectionToken)} with test connection.`,
+        );
+
+        // 2. ЯВНО ПЕРЕРЕГИСТРИРУЕМ ВСЕ НЕОБХОДИМЫЕ ЗАВИСИМОСТИ ДЛЯ ТЕСТОВ
+        // Репозиторий
+        container.register<IUserRepository>(UserRepositoryToken, {
+            useClass: MongoUserRepository,
+        });
+        console.log(
+            `[JEST_SETUP] Re-registered DI token ${String(UserRepositoryToken)}.`,
+        );
+        // Хешер
+        container.register<IPasswordHasher>(PasswordHasherToken, {
+            useClass: BcryptPasswordHasher,
+        });
+        console.log(
+            `[JEST_SETUP] Re-registered DI token ${String(PasswordHasherToken)}.`,
+        );
+        // JWT Сервис
+        container.register<IJwtService>(JwtServiceToken, {
+            useClass: JsonWebTokenService,
+        });
+        console.log(
+            `[JEST_SETUP] Re-registered DI token ${String(JwtServiceToken)}.`,
+        );
+        // ---> ДОБАВЬТЕ РЕГИСТРАЦИЮ ДРУГИХ ЗАВИСИМОСТЕЙ ЗДЕСЬ <---
 
         console.log(
-            `[JEST_SETUP] Global beforeAll: Test connection (State: ${testConnection.readyState}) registered in DI container under token ${String(MongooseConnectionToken)}.`,
+            `[JEST_SETUP] Global beforeAll: Test connection state: ${testConnection?.readyState}.`,
         );
         console.log(
             '[JEST_SETUP] Global beforeAll: Setup finished successfully.',
@@ -42,31 +88,21 @@ beforeAll(async () => {
             '[JEST_SETUP] Global beforeAll: CRITICAL SETUP FAILED:',
             error,
         );
-        // Попытка очистки, если что-то пошло не так
-        await stopMongoMemoryServer().catch((e) =>
-            console.error(
-                '[JEST_SETUP] Error during cleanup after failed setup:',
-                e,
-            ),
+        await stopMongoMemoryServer(mongodInstance, testConnection).catch((e) =>
+            console.error('Cleanup error:', e),
         );
-        // Завершаем процесс Jest с ошибкой, т.к. тесты не могут быть выполнены
         process.exit(1);
     }
-    // Увеличиваем таймаут для beforeAll, т.к. запуск сервера может занять время
-}, 60000); // 60 секунд
+}, 60000);
 
-// Глобальная очистка после всех тестов
 afterAll(async () => {
     console.log(
         '[JEST_SETUP] Global afterAll: Stopping MongoDB Memory Server...',
     );
-    try {
-        await stopMongoMemoryServer(); // Вызывает хелпер для остановки
-        console.log(
-            '[JEST_SETUP] Global afterAll: MongoDB Memory Server stopped successfully.',
-        );
-    } catch (error) {
-        console.error('[JEST_SETUP] Global afterAll: Teardown failed:', error);
-    }
-    // Увеличиваем таймаут и для afterAll
-}, 60000); // 60 секунд
+    await stopMongoMemoryServer(mongodInstance, testConnection);
+    // Сбрасываем все регистрации контейнера после тестов
+    container.reset(); // Используем reset для полной очистки
+    console.log(
+        '[JEST_SETUP] Global afterAll: Teardown completed and DI container reset.',
+    );
+}, 60000);

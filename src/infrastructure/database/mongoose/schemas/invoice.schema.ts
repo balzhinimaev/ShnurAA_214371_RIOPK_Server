@@ -8,7 +8,7 @@ import {
 // 1. Определяем базовый тип для документа Mongoose, ИСКЛЮЧАЯ несовместимое поле customerId
 type InvoiceDocumentProps = Omit<
     Invoice,
-    'id' | 'customer' | 'outstandingAmount' | 'isOverdue' | 'customerId'
+    'id' | 'customer' | 'outstandingAmount' | 'isOverdue' | 'customerId' | 'userId'
 >;
 
 // 2. Создаем интерфейс документа Mongoose, расширяя базовый тип и ДОБАВЛЯЯ customerId с правильным типом ObjectId

@@ -6,13 +6,44 @@ const config: Config = {
     testEnvironment: 'node',
     clearMocks: true,
     coverageDirectory: 'coverage',
+
+    // Add specific coverage collection settings
+    collectCoverage: true,
+    collectCoverageFrom: [
+        'src/**/*.ts',
+        '!src/**/*.d.ts',
+        '!src/**/*.interface.ts',
+        '!src/types/**/*.ts',
+        '!**/node_modules/**',
+        '!**/dist/**',
+        '!src/**/index.ts', // Exclude barrel files if you want
+    ],
+
+    // Add coverage reporters
+    coverageReporters: ['text', 'lcov', 'html', 'json'],
+
+    // Specify coverage thresholds if you want to enforce minimum coverage
+    coverageThreshold: {
+        global: {
+            statements: 70,
+            branches: 60,
+            functions: 70,
+            lines: 70,
+        },
+    },
+
     testPathIgnorePatterns: ['/node_modules/', '/dist/'],
     transformIgnorePatterns: ['/node_modules/', '\\.pnp\\.[^\\/]+$'],
     transform: {
         '^.+\\.tsx?$': [
             'ts-jest',
             {
-                // tsconfig: 'tsconfig.json'
+                // Enable source maps for better coverage mapping
+                isolatedModules: false,
+                diagnostics: {
+                    ignoreCodes: ['TS151001'],
+                },
+                tsconfig: 'tsconfig.json',
             },
         ],
     },
@@ -27,14 +58,8 @@ const config: Config = {
             '<rootDir>/src/models/Vocabulary/__mocks__/AcceptedWordBuryat.ts',
         '../../../models/Vocabulary/AcceptedWordRussian':
             '<rootDir>/src/models/Vocabulary/__mocks__/AcceptedWordRussian.ts',
-
-        // Альтернативный маппинг через абсолютные пути
-        // '^src/utils/logger$': '<rootDir>/src/utils/__mocks__/logger.ts',
-        // ... и т.д.
     },
-    // Если ваш setup файл тоже на TS, используйте .ts расширение
-    // setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
-    setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.ts', 'reflect-metadata'], // Оставляем .js, если файл не переименован
+    setupFilesAfterEnv: ['<rootDir>/tests/jest.setup.ts', 'reflect-metadata'],
 };
 
-export default config; // Используем export default
+export default config;
