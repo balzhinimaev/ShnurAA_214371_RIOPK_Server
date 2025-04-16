@@ -347,8 +347,7 @@ export class ProcessInvoiceUploadUseCase {
         try {
             // Ищем клиента по ИНН и ID пользователя
             let customer = await this.customerRepository.findByInn(
-                inn,
-                this.currentUserId,
+                inn
             );
 
             if (customer) {
@@ -380,8 +379,7 @@ export class ProcessInvoiceUploadUseCase {
             let retryCustomer = null;
             try {
                 retryCustomer = await this.customerRepository.findByInn(
-                    inn,
-                    this.currentUserId,
+                    inn
                 );
             } catch (retryError) {
                 /* Игнорируем ошибку повторного поиска */

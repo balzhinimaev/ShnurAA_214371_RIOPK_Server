@@ -1,27 +1,30 @@
 // src/infrastructure/database/mongoose/repositories/MongoUserRepository.ts
+
 import { injectable } from 'tsyringe';
-import { IUserRepository } from './IUserRepository';
-import { AppError } from '../../application/errors/AppError';
+import mongoose, { FilterQuery } from 'mongoose'; // Import FilterQuery
+import { CreateUserProps, FindAllUsersOptions, IUserRepository, UpdateUserData } from './IUserRepository';
 import { IUserDocument, UserModel } from '../../infrastructure/database/mongoose/schemas/user.schema';
-import { User, UserRole, CreateUserProps } from '../entities/user.entity';
-// Используем относительные пути, предполагая, что IUserRepository находится в domain/repositories
+import { AppError } from '../../application/errors/AppError';
+import { User, UserRole } from '../entities/user.entity';
 
-// Используем абсолютный путь к схеме, как в вашем примере
-
-// Используем абсолютный путь к AppError
-
-// Используем абсолютный путь к сущности User
 
 @injectable()
 export class MongoUserRepository implements IUserRepository {
+    // Improved mapping function
     private mapToDomain(userDoc: IUserDocument | null): User | null {
         if (!userDoc) {
             return null;
         }
-        const userObject = userDoc.toObject();
+        // Use lean() objects directly or ensure toObject() is called if not using lean()
+        // Make sure the document/object actually has these properties before accessing
+        const userObject =
+            typeof userDoc.toObject === 'function'
+                ? userDoc.toObject()
+                : userDoc;
 
+        // Basic check for essential properties
         if (
-            !userObject.id ||
+            !userObject?._id ||
             !userObject.name ||
             !userObject.email ||
             !userObject.passwordHash ||
@@ -29,26 +32,21 @@ export class MongoUserRepository implements IUserRepository {
             !userObject.createdAt ||
             !userObject.updatedAt
         ) {
-            console.error('Incomplete user object from database:', userObject);
-            // --- ИСПРАВЛЕНИЕ AppError ---
-            // Передаем только message и statusCode
-            throw new AppError(
-                'Неполные данные пользователя получены из базы данных',
-                500,
-            );
-            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+            console.error('Incomplete user data from database:', userObject);
+            // Throw a standard error; let the Use Case wrap it in AppError if needed
+            throw new Error('Incomplete user data received from the database.');
         }
 
-        const userProps = {
-            id: userObject.id,
+        return new User({
+            // Use _id from Mongoose doc/object
+            id: userObject._id.toString(),
             name: userObject.name,
             email: userObject.email,
             passwordHash: userObject.passwordHash,
-            roles: userObject.roles as UserRole[],
+            roles: userObject.roles as UserRole[], // Assume roles are correctly stored
             createdAt: userObject.createdAt,
             updatedAt: userObject.updatedAt,
-        };
-        return new User(userProps);
+        });
     }
 
     async create(data: CreateUserProps): Promise<User> {
@@ -62,72 +60,168 @@ export class MongoUserRepository implements IUserRepository {
 
             const mappedUser = this.mapToDomain(newUserDoc);
             if (!mappedUser) {
-                // --- ИСПРАВЛЕНИЕ AppError ---
-                throw new AppError(
-                    'Не удалось создать или смаппить пользователя после создания',
-                    500,
-                );
-                // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+                // This should ideally not happen if create succeeded
+                throw new Error('Failed to map user after creation.');
             }
             return mappedUser;
         } catch (error: any) {
-            console.error('Error creating user:', error); // Логируем исходную ошибку
+            console.error('Error creating user:', error);
             if (error.code === 11000 && error.keyPattern?.email) {
-                // --- ИСПРАВЛЕНИЕ AppError ---
-                // Передаем message, statusCode, isOperational=true
+                // Let Use Case handle specific operational errors
                 throw new AppError(
-                    'Пользователь с таким Email уже существует',
+                    'User with this email already exists',
                     409,
-                    true, // Ошибка дубликата - ожидаемая операционная ошибка
+                    true,
                 );
-                // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
             }
-            // --- ИСПРАВЛЕНИЕ AppError ---
-            // Передаем message, statusCode, isOperational=false
-            throw new AppError(
-                'Ошибка при создании пользователя в базе данных',
-                500,
-                false, // Неожиданная ошибка БД - не операционная
-            );
-            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+            throw new Error('Database error during user creation.'); // General DB error
         }
     }
 
     async findByEmail(email: string): Promise<User | null> {
         try {
+            // Use lean for performance on read operations
             const userDoc = await UserModel.findOne({
                 email: email.toLowerCase(),
-            }).exec();
-            return this.mapToDomain(userDoc);
+            })
+                .lean() // Get plain JS object
+                .exec();
+            return this.mapToDomain(userDoc as IUserDocument | null); // Cast needed because lean changes return type
         } catch (error: any) {
-            console.error('Error finding user by email:', error); // Логируем исходную ошибку
-            // --- ИСПРАВЛЕНИЕ AppError ---
-            throw new AppError(
-                'Ошибка при поиске пользователя по email',
-                500,
-                false, // Неожиданная ошибка БД
-            );
-            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+            console.error('Error finding user by email:', error);
+            throw new Error('Database error while finding user by email.');
         }
     }
 
     async findById(id: string): Promise<User | null> {
-        // Проверка валидности ID остается
-        if (!id.match(/^[0-9a-fA-F]{24}$/)) {
-            return null;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return null; // Invalid ID format
         }
         try {
-            const userDoc = await UserModel.findById(id).exec();
-            return this.mapToDomain(userDoc);
+            // Use lean for performance
+            const userDoc = await UserModel.findById(id)
+                .lean() // Get plain JS object
+                .exec();
+            return this.mapToDomain(userDoc as IUserDocument | null); // Cast needed
         } catch (error: any) {
-            console.error('Error finding user by id:', error); // Логируем исходную ошибку
-            // --- ИСПРАВЛЕНИЕ AppError ---
-            throw new AppError(
-                'Ошибка при поиске пользователя по ID',
-                500,
-                false, // Неожиданная ошибка БД
+            console.error('Error finding user by id:', error);
+            throw new Error('Database error while finding user by ID.');
+        }
+    }
+
+    // --- IMPLEMENTED findAll ---
+    async findAll(
+        options: FindAllUsersOptions,
+    ): Promise<{ users: User[]; total: number }> {
+        const {
+            limit = 10,
+            offset = 0,
+            sortBy = 'createdAt',
+            sortOrder = 'desc',
+            filter,
+        } = options;
+
+        const filterQuery: FilterQuery<IUserDocument> = {};
+        if (filter?.name) {
+            // Case-insensitive search for name containing the filter string
+            filterQuery.name = { $regex: filter.name, $options: 'i' };
+        }
+        if (filter?.role) {
+            filterQuery.roles = filter.role; // Assumes roles is an array
+        }
+
+        const sortQuery: { [key: string]: 1 | -1 } = {};
+        const allowedSortFields = ['name', 'email', 'createdAt', 'updatedAt']; // Define valid sort fields
+        const sortField = allowedSortFields.includes(sortBy)
+            ? sortBy
+            : 'createdAt';
+        sortQuery[sortField] = sortOrder === 'asc' ? 1 : -1;
+
+        try {
+            const [userDocs, total] = await Promise.all([
+                UserModel.find(filterQuery)
+                    .sort(sortQuery)
+                    .skip(offset)
+                    .limit(limit)
+                    .lean() // Use lean
+                    .exec(),
+                UserModel.countDocuments(filterQuery),
+            ]);
+
+            // Map lean documents
+            const users = userDocs
+                .map((doc) => this.mapToDomain(doc as IUserDocument)) // Cast needed
+                .filter((user): user is User => user !== null); // Filter out potential nulls
+
+            return { users, total };
+        } catch (dbError: any) {
+            console.error(`Error in findAll users:`, dbError);
+            throw new Error('Database error while finding all users.');
+        }
+    }
+
+    // --- IMPLEMENTED update ---
+    async update(id: string, data: UpdateUserData): Promise<User | null> {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return null; // Invalid ID format
+        }
+
+        const updateFields: Partial<IUserDocument> = {};
+        if (data.name !== undefined) {
+            updateFields.name = data.name;
+        }
+        if (data.roles !== undefined) {
+            updateFields.roles = data.roles;
+        }
+        // Add other updatable fields here (e.g., passwordHash if allowed)
+        // if (data.passwordHash !== undefined) {
+        //     updateFields.passwordHash = data.passwordHash;
+        // }
+
+        if (Object.keys(updateFields).length === 0) {
+            console.warn(
+                `Update called for user ${id} with no fields to update.`,
             );
-            // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+            return this.findById(id); // Return current user data if nothing to update
+        }
+
+        try {
+            const updatedUserDoc = await UserModel.findByIdAndUpdate(
+                id,
+                { $set: updateFields },
+                { new: true, runValidators: true }, // Return updated doc, run schema validators
+            )
+                .lean() // Use lean
+                .exec();
+
+            return this.mapToDomain(updatedUserDoc as IUserDocument | null); // Cast needed
+        } catch (dbError: any) {
+            console.error(`Error updating user ${id}:`, dbError);
+            if (dbError.name === 'ValidationError') {
+                const messages = Object.values(dbError.errors)
+                    .map((e: any) => e.message)
+                    .join(', ');
+                throw new AppError(
+                    `Validation error during user update: ${messages}`,
+                    400,
+                );
+            }
+            throw new Error('Database error during user update.');
+        }
+    }
+
+    // --- IMPLEMENTED delete ---
+    async delete(id: string): Promise<boolean> {
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return false; // Invalid ID format
+        }
+        try {
+            const result = await UserModel.deleteOne({ _id: id }).exec();
+            // deletedCount > 0 indicates successful deletion
+            return result.deletedCount > 0;
+        } catch (dbError: any) {
+            console.error(`Error deleting user ${id}:`, dbError);
+            throw new Error('Database error during user deletion.');
         }
     }
 }

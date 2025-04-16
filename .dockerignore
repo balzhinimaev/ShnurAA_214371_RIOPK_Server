@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build artifacts (если компилируете в dist)
+dist
+build
+
+# Environment files
+.env
+.env.*
+! .env.example # Оставить пример можно
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE config
+.vscode/
+.idea/
+
+# Test reports / coverage
+coverage/
+reports/
+
+# Log files
+*.log
+logs/

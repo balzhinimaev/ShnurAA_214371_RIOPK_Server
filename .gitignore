@@ -11,3 +11,4 @@ src/logs/combined.log
 /uploads
 *.log
 /coverage
+dist

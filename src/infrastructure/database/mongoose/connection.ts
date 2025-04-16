@@ -6,7 +6,7 @@ const connectDB = async (): Promise<void> => {
     try {
         mongoose.set('strictQuery', true); // Рекомендуемая настройка для Mongoose 7+
         await mongoose.connect(config.db.url, {
-            dbName: "flproject"
+            dbName: config.db.name
         }); // Используем URL из конфига
         console.log('MongoDB Connected Successfully');
 

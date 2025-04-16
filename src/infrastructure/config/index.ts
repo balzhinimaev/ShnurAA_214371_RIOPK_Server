@@ -11,6 +11,7 @@ const config = {
         expiresIn: process.env.JWT_EXPIRES_IN || '1d',
     },
     db: {
+        name: process.env.MONGO_INIDB_DATABASE || "flproject",
         url:
             process.env.DATABASE_URL ||
             'mongodb://localhost:27017/your_db_name',

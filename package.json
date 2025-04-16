@@ -9,7 +9,8 @@
     "dev": "ts-node-dev src/server.ts",
     "start": "node dist/app.js",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
-    "format": "prettier --write 'src/**/*.{ts,tsx,json,md}'"
+    "format": "prettier --write 'src/**/*.{ts,tsx,json,md}'",
+    "build": "npx tsc"
   },
   "author": "",
   "license": "ISC",
