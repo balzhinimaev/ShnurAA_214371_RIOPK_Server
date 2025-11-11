@@ -90,6 +90,31 @@ __decorate([
  *           format: float
  *           description: Сумма просроченной дебиторской задолженности.
  *           example: 315200.50
+ *         overduePercentage:
+ *           type: number
+ *           format: float
+ *           description: Процент просроченной задолженности от общей.
+ *           example: 25.2
+ *         currentReceivables:
+ *           type: number
+ *           format: float
+ *           description: Сумма задолженности в срок (не просроченной).
+ *           example: 935400.25
+ *         averagePaymentDelayDays:
+ *           type: number
+ *           format: float
+ *           description: Средний срок задержки оплаты (в днях).
+ *           example: 15.5
+ *         totalInvoicesCount:
+ *           type: number
+ *           format: integer
+ *           description: Общее количество неоплаченных счетов.
+ *           example: 42
+ *         overdueInvoicesCount:
+ *           type: number
+ *           format: integer
+ *           description: Количество просроченных счетов.
+ *           example: 18
  *         agingStructure:
  *           type: array
  *           description: Структура дебиторской задолженности по срокам возникновения (старения).
@@ -98,6 +123,11 @@ __decorate([
  *       required:
  *         - totalReceivables
  *         - overdueReceivables
+ *         - overduePercentage
+ *         - currentReceivables
+ *         - averagePaymentDelayDays
+ *         - totalInvoicesCount
+ *         - overdueInvoicesCount
  *         - agingStructure
  */
 class DashboardSummaryDto {
@@ -114,6 +144,36 @@ class DashboardSummaryDto {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "overduePercentage", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // % просроченной ДЗ
+        Object.defineProperty(this, "currentReceivables", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Непросроченная ДЗ
+        Object.defineProperty(this, "averagePaymentDelayDays", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Средний срок просрочки
+        Object.defineProperty(this, "totalInvoicesCount", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Общее количество счетов
+        Object.defineProperty(this, "overdueInvoicesCount", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Количество просроченных счетов
         Object.defineProperty(this, "agingStructure", {
             enumerable: true,
             configurable: true,
@@ -131,6 +191,26 @@ __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", Number)
 ], DashboardSummaryDto.prototype, "overdueReceivables", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "overduePercentage", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "currentReceivables", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "averagePaymentDelayDays", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "totalInvoicesCount", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "overdueInvoicesCount", void 0);
 __decorate([
     (0, class_transformer_1.Expose)(),
     (0, class_transformer_1.Type)(() => AgingBucketDto),

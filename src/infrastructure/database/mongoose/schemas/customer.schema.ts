@@ -12,7 +12,7 @@ export interface ICustomerDocument
 const CustomerSchema = new Schema<ICustomerDocument>(
     {
         name: { type: String, required: true, index: true },
-        inn: { type: String, sparse: true, unique: true }, // Уникальный, но может отсутствовать
+        unp: { type: String, sparse: true, unique: true }, // Уникальный, но может отсутствовать
         contactInfo: { type: String },
                 userId: {
             type: Schema.Types.ObjectId,
@@ -44,8 +44,8 @@ const CustomerSchema = new Schema<ICustomerDocument>(
     },
 );
 
-// Добавляем составной уникальный индекс для ИНН в рамках одного пользователя (если ИНН есть)
-CustomerSchema.index({ userId: 1, inn: 1 }, { unique: true, sparse: true });
+// Добавляем составной уникальный индекс для УНП в рамках одного пользователя (если УНП есть)
+CustomerSchema.index({ userId: 1, unp: 1 }, { unique: true, sparse: true });
 
 export const CustomerModel = model<ICustomerDocument>(
     'Customer',

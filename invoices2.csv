@@ -1,4 +1,4 @@
-InvoiceNumber,CustomerName,CustomerINN,IssueDate,DueDate,TotalAmount,PaidAmount
+InvoiceNumber,CustomerName,CustomerUNP,IssueDate,DueDate,TotalAmount,PaidAmount
 INV-2025-001,ООО "Ромашка",7712345678,2025-01-20,2025-02-19,15000.50,15000.50
 INV-2025-002,ИП Иванов И.И.,501234567890,2025-01-24,2025-02-23,25000.00,10000.00
 INV-2025-003,АО "Перспектива",7709876543,2025-01-29,2025-02-28,5000.00,

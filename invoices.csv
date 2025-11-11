@@ -1,4 +1,4 @@
-InvoiceNumber,CustomerName,CustomerINN,IssueDate,DueDate,TotalAmount,PaidAmount
+InvoiceNumber,CustomerName,CustomerUNP,IssueDate,DueDate,TotalAmount,PaidAmount
 INV-    ,ООО Ромашка,1234567890,2023-10-01,2023-11-01,1000.50,0
 INV-002,ИП Сидоров,9876543210,2023-09-15,2023.10.15,500,500
 INV-003,ООО Вектор,1122334455,15/10/2023,15/11/2023,2500.99,

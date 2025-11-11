@@ -102,7 +102,7 @@ Authorization: Bearer <token>
   {
     "customerId": "507f1f77bcf86cd799439011",
     "customerName": "ООО \"МетПром\"",
-    "customerInn": "246813579",
+    "customerUnp": "246813579",
     "totalDebt": 58000.00,
     "overdueDebt": 58000.00,
     "invoiceCount": 1,
@@ -163,7 +163,7 @@ GET /api/v1/reports/invoices?manager=Иванова&debtWorkStatus=CLAIM
       "customer": {
         "id": "507f191e810c19729de860ea",
         "name": "ООО \"АльфаТорг\"",
-        "inn": "123456789"
+        "unp": "123456789"
       },
       "issueDate": "2024-07-31T00:00:00.000Z",
       "dueDate": "2024-08-30T00:00:00.000Z",

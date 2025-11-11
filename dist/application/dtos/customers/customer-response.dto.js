@@ -28,10 +28,10 @@ const class_transformer_1 = require("class-transformer");
  *           type: string
  *           description: Название или имя клиента.
  *           example: "ООО Ромашка"
- *         inn:
+ *         unp:
  *           type: string
- *           nullable: true # Указываем, что ИНН может отсутствовать
- *           description: ИНН клиента (если предоставлен).
+ *           nullable: true # Указываем, что УНП может отсутствовать
+ *           description: УНП клиента (если предоставлен).
  *           example: "7712345678"
  *         contactInfo:
  *           type: string
@@ -77,10 +77,10 @@ class CustomerResponseDto {
             value: void 0
         });
         /**
-         * ИНН клиента (может отсутствовать).
+         * УНП клиента (может отсутствовать).
          * @example "7712345678"
          */
-        Object.defineProperty(this, "inn", {
+        Object.defineProperty(this, "unp", {
             enumerable: true,
             configurable: true,
             writable: true,
@@ -129,7 +129,7 @@ __decorate([
 __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", String)
-], CustomerResponseDto.prototype, "inn", void 0);
+], CustomerResponseDto.prototype, "unp", void 0);
 __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", String)

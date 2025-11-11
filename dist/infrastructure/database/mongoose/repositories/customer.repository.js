@@ -25,7 +25,7 @@ let MongoCustomerRepository = class MongoCustomerRepository {
             // Используем _id, если transform в схеме не настроен/не используется
             id: doc._id.toString(),
             name: doc.name,
-            inn: doc.inn,
+            unp: doc.unp,
             contactInfo: doc.contactInfo,
             createdAt: doc.createdAt,
             updatedAt: doc.updatedAt,
@@ -49,36 +49,36 @@ let MongoCustomerRepository = class MongoCustomerRepository {
         }
     }
     // --- ИЗМЕНЕНО: Убран userId, ищем глобально ---
-    async findByInn(inn) {
-        if (!inn) {
+    async findByUnp(unp) {
+        if (!unp) {
             return null;
         }
         try {
             // Ищем глобально
-            const doc = await customer_schema_1.CustomerModel.findOne({ inn: inn }).lean().exec();
+            const doc = await customer_schema_1.CustomerModel.findOne({ unp: unp }).lean().exec();
             return this.mapToDomain(doc);
         }
         catch (error) {
-            console.error(`Error finding customer by INN ${inn}:`, error);
-            throw new Error('Ошибка при поиске клиента по ИНН');
+            console.error(`Error finding customer by УНП ${unp}:`, error);
+            throw new Error('Ошибка при поиске клиента по УНП');
         }
     }
     async create(data) {
-        // --- ИЗМЕНЕНО: Проверка на глобальную уникальность ИНН ---
-        if (data.inn) {
-            const existingByInn = await this.findByInn(data.inn);
-            if (existingByInn) {
+        // --- ИЗМЕНЕНО: Проверка на глобальную уникальность УНП ---
+        if (data.unp) {
+            const existingByUnp = await this.findByUnp(data.unp);
+            if (existingByUnp) {
                 // Возможно, стоит вернуть ошибку, а не существующего клиента,
                 // т.к. пользователь пытался создать дубликат.
                 // Зависит от бизнес-логики. Здесь возвращаем ошибку 409.
-                throw new AppError_1.AppError(`Клиент с ИНН ${data.inn} уже существует в системе.`, 409);
-                // return existingByInn; // Старая логика
+                throw new AppError_1.AppError(`Клиент с УНП ${data.unp} уже существует в системе.`, 409);
+                // return existingByUnp; // Старая логика
             }
         }
         try {
             const newCustomerDoc = new customer_schema_1.CustomerModel({
                 name: data.name,
-                inn: data.inn,
+                unp: data.unp,
                 contactInfo: data.contactInfo,
                 userId: new mongoose_1.default.Types.ObjectId(data.userId), // Сохраняем ID создателя
             });
@@ -92,9 +92,9 @@ let MongoCustomerRepository = class MongoCustomerRepository {
             return mappedCustomer;
         }
         catch (error) {
-            // Обработка ошибки уникального индекса (предполагаем, что индекс только на 'inn')
-            if (error.code === 11000 && error.keyPattern?.inn) {
-                throw new AppError_1.AppError(`Клиент с ИНН ${data.inn} уже существует (ошибка уникальности).`, 409);
+            // Обработка ошибки уникального индекса (предполагаем, что индекс только на 'unp')
+            if (error.code === 11000 && error.keyPattern?.unp) {
+                throw new AppError_1.AppError(`Клиент с УНП ${data.unp} уже существует (ошибка уникальности).`, 409);
             }
             // Обработка ошибок валидации Mongoose
             if (error.name === 'ValidationError') {
@@ -117,10 +117,10 @@ let MongoCustomerRepository = class MongoCustomerRepository {
         // Глобальный фильтр (пока пустой, можно добавить поиск по имени/ИНН)
         const filterQuery = {};
         // if (filter?.name) { filterQuery.name = new RegExp(filter.name, 'i'); }
-        // if (filter?.inn) { filterQuery.inn = filter.inn; }
+        // if (filter?.unp) { filterQuery.unp = filter.unp; }
         const sortQuery = {};
         // Валидация sortBy, чтобы избежать NoSQL инъекций, если поле не разрешено
-        const allowedSortFields = ['name', 'inn', 'createdAt', 'updatedAt'];
+        const allowedSortFields = ['name', 'unp', 'createdAt', 'updatedAt'];
         const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'name'; // Поле по умолчанию, если передано невалидное
         sortQuery[sortField] = sortOrder === 'asc' ? 1 : -1;
         try {
@@ -184,9 +184,9 @@ let MongoCustomerRepository = class MongoCustomerRepository {
                     .join(', ');
                 throw new AppError_1.AppError(`Ошибка валидации при обновлении клиента: ${messages}`, 400);
             }
-            // Обработка ошибки уникального индекса INN при обновлении (если INN можно менять)
-            if (dbError.code === 11000 && dbError.keyPattern?.inn) {
-                throw new AppError_1.AppError(`ИНН ${updateFields.inn} уже используется другим клиентом.`, 409);
+            // Обработка ошибки уникального индекса УНП при обновлении (если УНП можно менять)
+            if (dbError.code === 11000 && dbError.keyPattern?.unp) {
+                throw new AppError_1.AppError(`УНП ${updateFields.unp} уже используется другим клиентом.`, 409);
             }
             throw new AppError_1.AppError('Ошибка базы данных при обновлении клиента', 500);
         }

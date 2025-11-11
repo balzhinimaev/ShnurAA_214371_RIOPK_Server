@@ -17,10 +17,10 @@ import { Expose } from 'class-transformer';
  *           type: string
  *           description: Название или имя клиента.
  *           example: "ООО Ромашка"
- *         inn:
+ *         unp:
  *           type: string
- *           nullable: true # Указываем, что ИНН может отсутствовать
- *           description: ИНН клиента (если предоставлен).
+ *           nullable: true # Указываем, что УНП может отсутствовать
+ *           description: УНП клиента (если предоставлен).
  *           example: "7712345678"
  *         contactInfo:
  *           type: string
@@ -59,11 +59,11 @@ export class CustomerResponseDto {
     name!: string;
 
     /**
-     * ИНН клиента (может отсутствовать).
+     * УНП клиента (может отсутствовать).
      * @example "7712345678"
      */
     @Expose()
-    inn?: string;
+    unp?: string;
 
     /**
      * Контактная информация клиента (может отсутствовать).

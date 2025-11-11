@@ -4,7 +4,7 @@ import { Customer } from '../entities/customer.entity';
 // Тип для создания остается прежним (userId нужен для аудита)
 export interface CreateCustomerData {
     name: string;
-    inn?: string;
+    unp?: string;
     contactInfo?: string;
     userId: string; // Кто создал
 }
@@ -16,7 +16,7 @@ export interface FindAllCustomersOptions {
     offset?: number;
     sortBy?: keyof Customer | string;
     sortOrder?: 'asc' | 'desc';
-    // filter?: { name?: string; inn?: string }; // Опционально для глобального поиска
+    // filter?: { name?: string; unp?: string }; // Опционально для глобального поиска
 }
 
 // Тип для обновления остается прежним
@@ -29,7 +29,7 @@ export interface ICustomerRepository {
     findById(id: string): Promise<Customer | null>;
 
     // --- ИЗМЕНЕНО: Убран userId ---
-    findByInn(inn: string): Promise<Customer | null>; // ИНН считаем глобально уникальным
+    findByUnp(unp: string): Promise<Customer | null>; // УНП считаем глобально уникальным
 
     create(data: CreateCustomerData): Promise<Customer>;
 

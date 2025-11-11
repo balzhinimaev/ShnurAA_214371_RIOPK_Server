@@ -2,7 +2,7 @@
 export class Customer {
     public readonly id: string;
     public name: string;
-    public inn?: string;
+    public unp?: string;
     public contactInfo?: string;
     public totalDebt?: number; // Эти поля не хранятся в БД, а рассчитываются
     public overdueDebt?: number; // Эти поля не хранятся в БД, а рассчитываются
@@ -12,7 +12,7 @@ export class Customer {
     constructor(props: {
         id: string;
         name: string;
-        inn?: string;
+        unp?: string;
         contactInfo?: string;
         totalDebt?: number;
         overdueDebt?: number;
@@ -21,7 +21,7 @@ export class Customer {
     }) {
         this.id = props.id;
         this.name = props.name;
-        this.inn = props.inn;
+        this.unp = props.unp;
         this.contactInfo = props.contactInfo;
         this.totalDebt = props.totalDebt;
         this.overdueDebt = props.overdueDebt;

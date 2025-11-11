@@ -5,6 +5,8 @@ import { GetDashboardSummaryUseCase } from '../../../../application/use-cases/re
 import { GetTopDebtorsUseCase } from '../../../../application/use-cases/reports/get-top-debtors.use-case';
 import { ListInvoicesUseCase } from '../../../../application/use-cases/reports/list-invoices.use-case';
 import { ApplyPaymentUseCase } from '../../../../application/use-cases/reports/apply-payment.use-case';
+import { GetCustomersOverdueUseCase } from '../../../../application/use-cases/reports/get-customers-overdue.use-case';
+import { AgingBucket } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
 
 export class ReportController {
     async getDashboardSummary(
@@ -69,6 +71,14 @@ export class ReportController {
                 filters.dueDateFrom = new Date(req.query.dueDateFrom as string);
             if (req.query.dueDateTo)
                 filters.dueDateTo = new Date(req.query.dueDateTo as string);
+            if (req.query.minDaysOverdue)
+                filters.minDaysOverdue = parseInt(
+                    req.query.minDaysOverdue as string,
+                );
+            if (req.query.maxDaysOverdue)
+                filters.maxDaysOverdue = parseInt(
+                    req.query.maxDaysOverdue as string,
+                );
 
             const limit = parseInt(req.query.limit as string) || 50;
             const offset = parseInt(req.query.offset as string) || 0;
@@ -106,6 +116,116 @@ export class ReportController {
             });
 
             res.status(200).json(updatedInvoice);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getCustomersWithOverdue(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getCustomersOverdueUseCase = container.resolve(
+                GetCustomersOverdueUseCase,
+            );
+
+            // Извлекаем параметры фильтрации из query
+            const filters: any = {};
+            
+            if (req.query.agingBucket) {
+                const rawAgingBucket = (req.query.agingBucket as string).trim();
+                const normalizedBucket = rawAgingBucket
+                    .toUpperCase()
+                    .replace(/-/g, '_')
+                    .replace(/\+/g, '_PLUS')
+                    .replace(/\s+/g, '_');
+
+                const aliasMapping: Record<string, AgingBucket> = {
+                    CURRENT: AgingBucket.CURRENT,
+                    'CURRENT_BUCKET': AgingBucket.CURRENT,
+                    '0': AgingBucket.CURRENT,
+                    '1_30': AgingBucket.DAYS_1_30,
+                    '1-30': AgingBucket.DAYS_1_30,
+                    '1 30': AgingBucket.DAYS_1_30,
+                    '30': AgingBucket.DAYS_1_30,
+                    '31_60': AgingBucket.DAYS_31_60,
+                    '31-60': AgingBucket.DAYS_31_60,
+                    '31 60': AgingBucket.DAYS_31_60,
+                    '60': AgingBucket.DAYS_31_60,
+                    '61_90': AgingBucket.DAYS_61_90,
+                    '61-90': AgingBucket.DAYS_61_90,
+                    '61 90': AgingBucket.DAYS_61_90,
+                    '90': AgingBucket.DAYS_61_90,
+                    '91_PLUS': AgingBucket.DAYS_91_PLUS,
+                    '91-PLUS': AgingBucket.DAYS_91_PLUS,
+                    '91 PLUS': AgingBucket.DAYS_91_PLUS,
+                    '91+': AgingBucket.DAYS_91_PLUS,
+                    '91': AgingBucket.DAYS_91_PLUS,
+                    '100': AgingBucket.DAYS_91_PLUS,
+                };
+
+                const resolvedBucket =
+                    aliasMapping[normalizedBucket] ??
+                    aliasMapping[rawAgingBucket.toUpperCase()];
+
+                if (resolvedBucket) {
+                    filters.agingBucket = resolvedBucket;
+                } else if (
+                    (Object.values(AgingBucket) as string[]).includes(
+                        normalizedBucket,
+                    )
+                ) {
+                    filters.agingBucket = normalizedBucket as AgingBucket;
+                } else {
+                    console.warn(
+                        `Invalid agingBucket provided: ${rawAgingBucket}`,
+                    );
+                }
+            }
+            
+            if (req.query.minDaysOverdue !== undefined) {
+                filters.minDaysOverdue = parseInt(
+                    req.query.minDaysOverdue as string,
+                );
+            }
+            
+            if (req.query.maxDaysOverdue !== undefined) {
+                filters.maxDaysOverdue = parseInt(
+                    req.query.maxDaysOverdue as string,
+                );
+            }
+            
+            if (req.query.minOverdueAmount !== undefined) {
+                filters.minOverdueAmount = parseFloat(
+                    req.query.minOverdueAmount as string,
+                );
+            }
+            
+            if (req.query.includeCurrent !== undefined) {
+                filters.includeCurrent = req.query.includeCurrent === 'true';
+            }
+
+            const limit = parseInt(req.query.limit as string) || 50;
+            const offset = parseInt(req.query.offset as string) || 0;
+            const sortBy = (req.query.sortBy as
+                | 'overdueAmount'
+                | 'oldestDebtDays'
+                | 'totalDebt'
+                | 'customerName') || 'overdueAmount';
+            const sortOrder =
+                (req.query.sortOrder as 'asc' | 'desc') || 'desc';
+
+            const result = await getCustomersOverdueUseCase.execute({
+                filters,
+                limit,
+                offset,
+                sortBy,
+                sortOrder,
+            });
+
+            res.status(200).json(result);
         } catch (error) {
             next(error);
         }

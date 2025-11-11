@@ -5,7 +5,7 @@ import Papa from 'papaparse'; // Импортируем типы PapaParse
 export interface InvoiceCsvRowDto {
     InvoiceNumber: string; // Название должно совпадать с заголовком в CSV
     CustomerName: string;
-    CustomerINN: string;
+    CustomerUNP: string;
     IssueDate: string;
     DueDate: string;
     TotalAmount: string;

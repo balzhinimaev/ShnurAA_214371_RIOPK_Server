@@ -13,7 +13,6 @@ import {
 import {
     Invoice,
     InvoiceStatus,
-    DebtWorkStatus,
 } from '../../../domain/entities/invoice.entity';
 import { Customer } from '../../../domain/entities/customer.entity';
 import { AppError } from '../../errors/AppError';
@@ -204,7 +203,7 @@ export class Process1cInvoiceUploadUseCase {
 
         // Найти или создать клиента
         const customer = await this.findOrCreateCustomer(
-            validatedData.inn,
+            validatedData.unp,
             validatedData.customerName,
             rowIndex,
         );
@@ -228,7 +227,7 @@ export class Process1cInvoiceUploadUseCase {
                 await this.invoiceRepository.updatePayment(
                     existingInvoice.id,
                     validatedData.paidAmount,
-                    validatedData.actualPaymentDate,
+                    validatedData.actualPaymentDate ?? undefined,
                 );
                 this.updatedInvoicesCount++;
             } else {
@@ -244,6 +243,7 @@ export class Process1cInvoiceUploadUseCase {
             ...validatedData,
             id: 'temp',
             customerId: customer.id,
+            actualPaymentDate: validatedData.actualPaymentDate ?? undefined,
             createdAt: currentDate,
             updatedAt: currentDate,
         });
@@ -260,7 +260,7 @@ export class Process1cInvoiceUploadUseCase {
             totalAmount: validatedData.totalAmount,
             paidAmount: validatedData.paidAmount,
             paymentTermDays: validatedData.paymentTermDays,
-            actualPaymentDate: validatedData.actualPaymentDate,
+            actualPaymentDate: validatedData.actualPaymentDate ?? undefined,
             status: validatedData.status,
             debtWorkStatus: debtWorkStatus,
             serviceType: validatedData.serviceType,
@@ -281,7 +281,7 @@ export class Process1cInvoiceUploadUseCase {
         // Извлекаем и валидируем базовые поля
         const invoiceNumber = row.Номер_акта?.trim();
         const customerName = row.Контрагент?.trim();
-        const inn = row.ИНН?.trim();
+        const unp = row.ИНН?.trim();
         const serviceStartDateStr = row.Дата_начала_услуги?.trim();
         const serviceEndDateStr = row.Дата_окончания_услуги?.trim();
         const dueDateStr = row.Дата_планируемой_оплаты?.trim();
@@ -296,7 +296,7 @@ export class Process1cInvoiceUploadUseCase {
         // Проверка обязательных полей
         if (!invoiceNumber) errors.push('Отсутствует номер акта');
         if (!customerName) errors.push('Отсутствует имя контрагента');
-        if (!inn) errors.push('Отсутствует ИНН');
+        if (!unp) errors.push('Отсутствует УНП');
         if (!serviceStartDateStr) errors.push('Отсутствует дата начала услуги');
         if (!serviceEndDateStr)
             errors.push('Отсутствует дата окончания услуги');
@@ -336,7 +336,7 @@ export class Process1cInvoiceUploadUseCase {
         }
 
         const actualPaymentDate = actualPaymentDateStr
-            ? this.parseDate(actualPaymentDateStr)
+            ? this.parseDate(actualPaymentDateStr) ?? undefined
             : undefined;
 
         // Issuedate = serviceEndDate (дата выставления счета = дата окончания услуги)
@@ -362,7 +362,7 @@ export class Process1cInvoiceUploadUseCase {
         return {
             invoiceNumber: invoiceNumber!,
             customerName: customerName!,
-            inn: inn!,
+            unp: unp!,
             issueDate: issueDate!,
             dueDate: dueDate!,
             serviceStartDate: serviceStartDate!,
@@ -392,7 +392,10 @@ export class Process1cInvoiceUploadUseCase {
         for (const parser of formatsToTry) {
             try {
                 const parsed = parser(trimmedDate);
-                if (isValid(parsed)) return parsed;
+                if (isValid(parsed)) {
+                    // Нормализуем дату для демо-данных
+                    return this.normalizeDateForDemo(parsed);
+                }
             } catch (e) {
                 // Continue to next format
             }
@@ -400,8 +403,33 @@ export class Process1cInvoiceUploadUseCase {
         return null;
     }
 
+    /**
+     * Нормализует даты из старых CSV для демонстрации.
+     * Если дата старше 200 дней, переносит её на текущий год,
+     * сохраняя месяц и день для правильной возрастной структуры.
+     */
+    private normalizeDateForDemo(date: Date): Date {
+        const today = new Date();
+        const diffDays = (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+        // Если дата старше 200 дней — считаем это старыми демо-данными
+        if (diffDays > 200) {
+            const normalized = new Date(date);
+            normalized.setFullYear(today.getFullYear());
+
+            // Если после переноса дата всё ещё в будущем, сдвигаем на год назад
+            if (normalized > today) {
+                normalized.setFullYear(today.getFullYear() - 1);
+            }
+
+            return normalized;
+        }
+
+        return date;
+    }
+
     private async findOrCreateCustomer(
-        inn: string,
+        unp: string,
         name: string,
         rowIndex: number,
     ): Promise<Customer | null> {
@@ -415,50 +443,50 @@ export class Process1cInvoiceUploadUseCase {
         }
 
         try {
-            let customer = await this.customerRepository.findByInn(inn);
+            let customer = await this.customerRepository.findByUnp(unp);
 
             if (customer) {
                 if (customer.name !== name) {
                     console.warn(
-                        `Row ${rowIndex}: Customer INN ${inn} found, but name differs (DB: '${customer.name}', CSV: '${name}'). Using existing.`,
+                        `Row ${rowIndex}: Customer УНП ${unp} found, but name differs (DB: '${customer.name}', CSV: '${name}'). Using existing.`,
                     );
                 }
                 return customer;
             } else {
                 const newCustomer = await this.customerRepository.create({
                     name: name,
-                    inn: inn,
+                    unp: unp,
                     userId: this.currentUserId,
                 });
                 this.createdCustomersCount++;
                 console.log(
-                    `Row ${rowIndex}: Created new customer '${name}' (INN: ${inn}) (ID: ${newCustomer.id})`,
+                    `Row ${rowIndex}: Created new customer '${name}' (УНП: ${unp}) (ID: ${newCustomer.id})`,
                 );
                 return newCustomer;
             }
         } catch (error: any) {
             console.error(
-                `Row ${rowIndex}: Error finding or creating customer INN ${inn}`,
+                `Row ${rowIndex}: Error finding or creating customer УНП ${unp}`,
                 error,
             );
 
             // Попытка повторного поиска
             let retryCustomer = null;
             try {
-                retryCustomer = await this.customerRepository.findByInn(inn);
+                retryCustomer = await this.customerRepository.findByUnp(unp);
             } catch (retryError) {
                 // Ignore
             }
 
             if (retryCustomer) {
                 console.warn(
-                    `Row ${rowIndex}: Found customer INN ${inn} on retry.`,
+                    `Row ${rowIndex}: Found customer УНП ${unp} on retry.`,
                 );
                 return retryCustomer;
             }
 
             throw new Error(
-                `Не удалось найти или создать клиента с ИНН ${inn}. Причина: ${error.message || error}`,
+                `Не удалось найти или создать клиента с УНП ${unp}. Причина: ${error.message || error}`,
             );
         }
     }

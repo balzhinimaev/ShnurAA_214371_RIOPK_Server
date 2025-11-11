@@ -22,6 +22,8 @@ export interface ListInvoicesFilters {
     maxAmount?: number; // Максимальная сумма задолженности
     dueDateFrom?: Date; // Срок оплаты от
     dueDateTo?: Date; // Срок оплаты до
+    minDaysOverdue?: number; // Минимальное количество дней просрочки
+    maxDaysOverdue?: number; // Максимальное количество дней просрочки
 }
 
 export interface ListInvoicesOptions {

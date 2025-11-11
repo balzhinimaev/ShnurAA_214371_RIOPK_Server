@@ -16,7 +16,7 @@ class Customer {
             writable: true,
             value: void 0
         });
-        Object.defineProperty(this, "inn", {
+        Object.defineProperty(this, "unp", {
             enumerable: true,
             configurable: true,
             writable: true,
@@ -54,7 +54,7 @@ class Customer {
         });
         this.id = props.id;
         this.name = props.name;
-        this.inn = props.inn;
+        this.unp = props.unp;
         this.contactInfo = props.contactInfo;
         this.totalDebt = props.totalDebt;
         this.overdueDebt = props.overdueDebt;

@@ -31,7 +31,11 @@ const jsonwebtoken_service_1 = require("../services/jsonwebtoken.service");
 const register_user_use_case_1 = require("../../application/use-cases/auth/register-user.use-case");
 const login_user_use_case_1 = require("../../application/use-cases/auth/login-user.use-case");
 const get_dashboard_summary_use_case_1 = require("../../application/use-cases/reports/get-dashboard-summary.use-case");
+const get_top_debtors_use_case_1 = require("../../application/use-cases/reports/get-top-debtors.use-case");
+const list_invoices_use_case_1 = require("../../application/use-cases/reports/list-invoices.use-case");
+const apply_payment_use_case_1 = require("../../application/use-cases/reports/apply-payment.use-case");
 const process_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-invoice-upload.use-case");
+const process_1c_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case");
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 // 1. Базовые сервисы и конфигурация инфраструктуры
 // Регистрируем ДЕФОЛТНОЕ соединение Mongoose под специальным токеном.
@@ -74,8 +78,20 @@ tsyringe_1.container.register(login_user_use_case_1.LoginUserUseCase, {
 tsyringe_1.container.register(get_dashboard_summary_use_case_1.GetDashboardSummaryUseCase, {
     useClass: get_dashboard_summary_use_case_1.GetDashboardSummaryUseCase,
 });
+tsyringe_1.container.register(get_top_debtors_use_case_1.GetTopDebtorsUseCase, {
+    useClass: get_top_debtors_use_case_1.GetTopDebtorsUseCase,
+});
+tsyringe_1.container.register(list_invoices_use_case_1.ListInvoicesUseCase, {
+    useClass: list_invoices_use_case_1.ListInvoicesUseCase,
+});
+tsyringe_1.container.register(apply_payment_use_case_1.ApplyPaymentUseCase, {
+    useClass: apply_payment_use_case_1.ApplyPaymentUseCase,
+});
 tsyringe_1.container.register(process_invoice_upload_use_case_1.ProcessInvoiceUploadUseCase, {
     useClass: process_invoice_upload_use_case_1.ProcessInvoiceUploadUseCase,
+});
+tsyringe_1.container.register(process_1c_invoice_upload_use_case_1.Process1cInvoiceUploadUseCase, {
+    useClass: process_1c_invoice_upload_use_case_1.Process1cInvoiceUploadUseCase,
 });
 // --- Регистрация Controllers ---
 // Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.

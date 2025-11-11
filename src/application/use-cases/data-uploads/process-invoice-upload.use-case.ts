@@ -36,15 +36,15 @@ export interface ProcessUploadResult {
 // // ИЛИ определите его здесь, если он не экспортирован
 // interface CreateCustomerData {
 //     name: string;
-//     inn?: string;
+//     unp?: string;
 //     contactInfo?: string;
 //     userId: string;
 // }
 
 // Интерфейсы репозиториев с нужными методами
 // interface ICustomerRepositoryExtended extends ICustomerRepository {
-//     // findByInn(inn: string): Promise<Customer | null>; // Используем сигнатуру из ICustomerRepository
-//     // create(data: { name: string; inn?: string; contactInfo?: string; }): Promise<Customer>; // Используем сигнатуру из ICustomerRepository
+//     // findByUnp(unp: string): Promise<Customer | null>; // Используем сигнатуру из ICustomerRepository
+//     // create(data: { name: string; unp?: string; contactInfo?: string; }): Promise<Customer>; // Используем сигнатуру из ICustomerRepository
 // }
 interface IInvoiceRepositoryExtended extends IInvoiceRepository {
     create(
@@ -56,6 +56,9 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
             | 'updatedAt'
             | 'outstandingAmount'
             | 'isOverdue'
+            | 'getDaysOverdue'
+            | 'calculateDebtWorkStatus'
+            | 'applyPayment'
         >,
     ): Promise<Invoice>;
     findByInvoiceNumberAndCustomerId(
@@ -175,7 +178,7 @@ export class ProcessInvoiceUploadUseCase {
                     const requiredHeaders = [
                         'InvoiceNumber',
                         'CustomerName',
-                        'CustomerINN',
+                        'CustomerUNP',
                         'IssueDate',
                         'DueDate',
                         'TotalAmount',
@@ -213,7 +216,7 @@ export class ProcessInvoiceUploadUseCase {
 
         // --- ИЗМЕНЕНИЕ: findOrCreateCustomer теперь использует this.currentUserId ---
         const customer = await this.findOrCreateCustomer(
-            validatedData.customerInn,
+            validatedData.customerUnp,
             validatedData.customerName,
             rowIndex,
         );
@@ -237,6 +240,12 @@ export class ProcessInvoiceUploadUseCase {
             );
         }
 
+        // Calculate paymentTermDays as the difference between dueDate and issueDate
+        const paymentTermDays = Math.ceil(
+            (validatedData.dueDate.getTime() - validatedData.issueDate.getTime()) /
+                (1000 * 60 * 60 * 24)
+        );
+
         const newInvoiceData = {
             invoiceNumber: validatedData.invoiceNumber,
             customerId: customer.id,
@@ -244,6 +253,7 @@ export class ProcessInvoiceUploadUseCase {
             dueDate: validatedData.dueDate,
             totalAmount: validatedData.totalAmount,
             paidAmount: validatedData.paidAmount,
+            paymentTermDays: paymentTermDays,
             status: 'OPEN' as InvoiceStatus,
         };
 
@@ -256,7 +266,7 @@ export class ProcessInvoiceUploadUseCase {
         const errors: string[] = [];
         const invoiceNumber = row.InvoiceNumber?.trim();
         const customerName = row.CustomerName?.trim();
-        const customerInn = row.CustomerINN?.trim();
+        const customerUnp = row.CustomerUNP?.trim();
         const issueDateStr = row.IssueDate?.trim();
         const dueDateStr = row.DueDate?.trim();
         const totalAmountStr = row.TotalAmount?.trim();
@@ -266,7 +276,7 @@ export class ProcessInvoiceUploadUseCase {
             errors.push('Отсутствует номер счета (InvoiceNumber)');
         if (!customerName)
             errors.push('Отсутствует имя клиента (CustomerName)');
-        if (!customerInn) errors.push('Отсутствует ИНН клиента (CustomerINN)');
+        if (!customerUnp) errors.push('Отсутствует УНП клиента (CustomerUNP)');
         if (!issueDateStr)
             errors.push('Отсутствует дата выставления (IssueDate)');
         if (!dueDateStr) errors.push('Отсутствует дата оплаты (DueDate)');
@@ -300,7 +310,7 @@ export class ProcessInvoiceUploadUseCase {
         return {
             invoiceNumber: invoiceNumber!,
             customerName: customerName!,
-            customerInn: customerInn!,
+            customerUnp: customerUnp!,
             issueDate: issueDate!,
             dueDate: dueDate!,
             totalAmount: totalAmount,
@@ -321,15 +331,43 @@ export class ProcessInvoiceUploadUseCase {
         for (const parser of formatsToTry) {
             try {
                 const parsed = parser(trimmedDate);
-                if (isValid(parsed)) return parsed;
+                if (isValid(parsed)) {
+                    // Нормализуем дату для демо-данных
+                    return this.normalizeDateForDemo(parsed);
+                }
             } catch (e) {}
         }
         return null;
     }
 
+    /**
+     * Нормализует даты из старых CSV для демонстрации.
+     * Если дата старше 200 дней, переносит её на текущий год,
+     * сохраняя месяц и день для правильной возрастной структуры.
+     */
+    private normalizeDateForDemo(date: Date): Date {
+        const today = new Date();
+        const diffDays = (today.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
+
+        // Если дата старше 200 дней — считаем это старыми демо-данными
+        if (diffDays > 200) {
+            const normalized = new Date(date);
+            normalized.setFullYear(today.getFullYear());
+
+            // Если после переноса дата всё ещё в будущем, сдвигаем на год назад
+            if (normalized > today) {
+                normalized.setFullYear(today.getFullYear() - 1);
+            }
+
+            return normalized;
+        }
+
+        return date;
+    }
+
     // --- ИЗМЕНЕНИЕ: Используем this.currentUserId при поиске и создании ---
     private async findOrCreateCustomer(
-        inn: string,
+        unp: string,
         name: string,
         rowIndex: number,
     ): Promise<Customer | null> {
@@ -345,15 +383,15 @@ export class ProcessInvoiceUploadUseCase {
         }
 
         try {
-            // Ищем клиента по ИНН и ID пользователя
-            let customer = await this.customerRepository.findByInn(
-                inn
+            // Ищем клиента по УНП и ID пользователя
+            let customer = await this.customerRepository.findByUnp(
+                unp
             );
 
             if (customer) {
                 if (customer.name !== name) {
                     console.warn(
-                        `Row ${rowIndex}: Customer INN ${inn} (user ${this.currentUserId}) found, but name differs (DB: '${customer.name}', CSV: '${name}'). Using existing.`,
+                        `Row ${rowIndex}: Customer УНП ${unp} (user ${this.currentUserId}) found, but name differs (DB: '${customer.name}', CSV: '${name}'). Using existing.`,
                     );
                 }
                 return customer;
@@ -361,25 +399,25 @@ export class ProcessInvoiceUploadUseCase {
                 // Создаем нового клиента, передавая все необходимые данные
                 const newCustomer = await this.customerRepository.create({
                     name: name,
-                    inn: inn,
+                    unp: unp,
                     userId: this.currentUserId, // Передаем ID текущего пользователя
                 });
                 this.createdCustomersCount++;
                 console.log(
-                    `Row ${rowIndex}: Created new customer '${name}' (INN: ${inn}) for user ${this.currentUserId} (ID: ${newCustomer.id})`,
+                    `Row ${rowIndex}: Created new customer '${name}' (УНП: ${unp}) for user ${this.currentUserId} (ID: ${newCustomer.id})`,
                 );
                 return newCustomer;
             }
         } catch (error: any) {
             console.error(
-                `Row ${rowIndex}: Error finding or creating customer INN ${inn} for user ${this.currentUserId}`,
+                `Row ${rowIndex}: Error finding or creating customer УНП ${unp} for user ${this.currentUserId}`,
                 error,
             );
             // Попытка повторного поиска на случай гонки
             let retryCustomer = null;
             try {
-                retryCustomer = await this.customerRepository.findByInn(
-                    inn
+                retryCustomer = await this.customerRepository.findByUnp(
+                    unp
                 );
             } catch (retryError) {
                 /* Игнорируем ошибку повторного поиска */
@@ -387,14 +425,14 @@ export class ProcessInvoiceUploadUseCase {
 
             if (retryCustomer) {
                 console.warn(
-                    `Row ${rowIndex}: Found customer INN ${inn} (user ${this.currentUserId}) on retry after creation/find error.`,
+                    `Row ${rowIndex}: Found customer УНП ${unp} (user ${this.currentUserId}) on retry after creation/find error.`,
                 );
                 return retryCustomer;
             }
 
             // Если не удалось ни найти, ни создать, ни найти повторно - выбрасываем ошибку
             throw new Error(
-                `Не удалось найти или создать клиента с ИНН ${inn} для пользователя ${this.currentUserId}. Причина: ${error.message || error}`,
+                `Не удалось найти или создать клиента с УНП ${unp} для пользователя ${this.currentUserId}. Причина: ${error.message || error}`,
             );
         }
     }

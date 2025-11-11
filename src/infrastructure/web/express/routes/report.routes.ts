@@ -60,6 +60,138 @@ router.get('/top-debtors', reportController.getTopDebtors);
 
 /**
  * @openapi
+ * /reports/customers-overdue:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Клиенты с просрочкой и фильтрацией по категориям старения
+ *     description: Возвращает список клиентов с просроченной задолженностью, с возможностью фильтрации по категориям просрочки (aging buckets).
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: agingBucket
+ *         schema:
+ *           type: string
+ *           enum: [CURRENT, 1_30, 31_60, 61_90, 91_PLUS]
+ *         description: Фильтр по категории старения (CURRENT = без просрочки, 1_30 = 1-30 дней, 31_60 = 31-60 дней, 61_90 = 61-90 дней, 91_PLUS = 91+ дней)
+ *       - in: query
+ *         name: minDaysOverdue
+ *         schema:
+ *           type: integer
+ *         description: Минимальное количество дней просрочки (имеет приоритет над agingBucket)
+ *       - in: query
+ *         name: maxDaysOverdue
+ *         schema:
+ *           type: integer
+ *         description: Максимальное количество дней просрочки (имеет приоритет над agingBucket)
+ *       - in: query
+ *         name: minOverdueAmount
+ *         schema:
+ *           type: number
+ *         description: Минимальная сумма просроченной задолженности
+ *       - in: query
+ *         name: includeCurrent
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Включать ли клиентов без просрочки (CURRENT)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Количество записей на странице
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Смещение для пагинации
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [overdueAmount, oldestDebtDays, totalDebt, customerName]
+ *           default: overdueAmount
+ *         description: Поле для сортировки
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Порядок сортировки
+ *     responses:
+ *       200:
+ *         description: Список клиентов с просрочкой.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 customers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       customerId:
+ *                         type: string
+ *                       customerName:
+ *                         type: string
+ *                       customerUnp:
+ *                         type: string
+ *                       totalDebt:
+ *                         type: number
+ *                       overdueDebt:
+ *                         type: number
+ *                       currentDebt:
+ *                         type: number
+ *                       invoiceCount:
+ *                         type: integer
+ *                       overdueInvoiceCount:
+ *                         type: integer
+ *                       oldestDebtDays:
+ *                         type: integer
+ *                       agingBucket:
+ *                         type: string
+ *                         enum: [CURRENT, 1_30, 31_60, 61_90, 91_PLUS]
+ *                       agingBreakdown:
+ *                         type: object
+ *                         properties:
+ *                           current:
+ *                             type: number
+ *                           days_1_30:
+ *                             type: number
+ *                           days_31_60:
+ *                             type: number
+ *                           days_61_90:
+ *                             type: number
+ *                           days_91_plus:
+ *                             type: number
+ *                 total:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 offset:
+ *                   type: integer
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalOverdueAmount:
+ *                       type: number
+ *                     totalCustomers:
+ *                       type: integer
+ *                     averageDaysOverdue:
+ *                       type: number
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/customers-overdue', reportController.getCustomersWithOverdue);
+
+/**
+ * @openapi
  * /reports/invoices:
  *   get:
  *     tags: [Отчеты]
@@ -95,6 +227,16 @@ router.get('/top-debtors', reportController.getTopDebtors);
  *         schema:
  *           type: boolean
  *         description: Только просроченные счета
+ *       - in: query
+ *         name: minDaysOverdue
+ *         schema:
+ *           type: integer
+ *         description: Минимальное количество дней просрочки (например, 30 для счетов с просрочкой 30+ дней)
+ *       - in: query
+ *         name: maxDaysOverdue
+ *         schema:
+ *           type: integer
+ *         description: Максимальное количество дней просрочки (например, 60 для счетов с просрочкой до 60 дней)
  *       - in: query
  *         name: limit
  *         schema:

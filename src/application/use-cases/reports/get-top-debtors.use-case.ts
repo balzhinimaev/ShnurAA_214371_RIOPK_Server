@@ -8,7 +8,7 @@ import {
 export interface TopDebtorDto {
     customerId: string;
     customerName: string;
-    customerInn?: string;
+    customerUnp?: string;
     totalDebt: number;
     overdueDebt: number;
     invoiceCount: number;
