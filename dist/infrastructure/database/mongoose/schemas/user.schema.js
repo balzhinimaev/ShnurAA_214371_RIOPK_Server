@@ -26,7 +26,8 @@ exports.UserSchema = new mongoose_1.Schema({
         transform: (_doc, ret) => {
             ret.id = ret._id.toString(); // Преобразуем _id в id (строка)
             delete ret._id; // Удаляем _id
-            delete ret.__v; // Удаляем версию документа
+            if (ret.__v !== undefined)
+                delete ret.__v; // Удаляем версию документа
             // delete ret.passwordHash; // Можно удалять хеш при выводе, если не нужен вовне
             return ret;
         },
@@ -36,7 +37,8 @@ exports.UserSchema = new mongoose_1.Schema({
         transform: (_doc, ret) => {
             ret.id = ret._id.toString();
             delete ret._id;
-            delete ret.__v;
+            if (ret.__v !== undefined)
+                delete ret.__v;
             return ret;
         },
     },

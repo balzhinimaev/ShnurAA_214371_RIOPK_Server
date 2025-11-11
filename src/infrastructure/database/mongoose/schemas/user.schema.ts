@@ -1,5 +1,5 @@
 // src/infrastructure/database/mongoose/schemas/user.schema.ts
-import { Schema, model, Document } from 'mongoose';
+import { Schema, model, Document, Types } from 'mongoose';
 import { User } from '../../../../domain/entities/user.entity';
 
 // Интерфейс для документа Mongoose, расширяющий наш User entity
@@ -28,20 +28,20 @@ export const UserSchema = new Schema<IUserDocument>(
         timestamps: true, // Автоматически добавляет createdAt и updatedAt
         // Преобразование документа Mongoose в нашу сущность User при выводе
         toJSON: {
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString(); // Преобразуем _id в id (строка)
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString(); // Преобразуем _id в id (строка)
                 delete ret._id; // Удаляем _id
-                delete ret.__v; // Удаляем версию документа
+                if (ret.__v !== undefined) delete ret.__v; // Удаляем версию документа
                 // delete ret.passwordHash; // Можно удалять хеш при выводе, если не нужен вовне
                 return ret;
             },
         },
         toObject: {
             // Аналогично для toObject
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString();
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString();
                 delete ret._id;
-                delete ret.__v;
+                if (ret.__v !== undefined) delete ret.__v;
                 return ret;
             },
         },

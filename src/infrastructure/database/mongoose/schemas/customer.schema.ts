@@ -24,20 +24,20 @@ const CustomerSchema = new Schema<ICustomerDocument>(
     {
         timestamps: true,
         toJSON: {
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString();
-                if (ret.userId) ret.userId = ret.userId.toString();
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString();
+                if (ret.userId) ret.userId = (ret.userId as Types.ObjectId).toString();
                 delete ret._id;
-                delete ret.__v;
+                if (ret.__v !== undefined) delete ret.__v;
                 return ret;
             },
         },
         toObject: {
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString();
-                if (ret.userId) ret.userId = ret.userId.toString();
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString();
+                if (ret.userId) ret.userId = (ret.userId as Types.ObjectId).toString();
                 delete ret._id;
-                delete ret.__v;
+                if (ret.__v !== undefined) delete ret.__v;
                 return ret;
             },
         },

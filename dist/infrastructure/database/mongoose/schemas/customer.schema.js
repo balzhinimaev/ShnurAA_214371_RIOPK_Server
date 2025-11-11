@@ -21,7 +21,8 @@ const CustomerSchema = new mongoose_1.Schema({
             if (ret.userId)
                 ret.userId = ret.userId.toString();
             delete ret._id;
-            delete ret.__v;
+            if (ret.__v !== undefined)
+                delete ret.__v;
             return ret;
         },
     },
@@ -31,7 +32,8 @@ const CustomerSchema = new mongoose_1.Schema({
             if (ret.userId)
                 ret.userId = ret.userId.toString();
             delete ret._id;
-            delete ret.__v;
+            if (ret.__v !== undefined)
+                delete ret.__v;
             return ret;
         },
     },

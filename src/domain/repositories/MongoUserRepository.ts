@@ -150,7 +150,7 @@ export class MongoUserRepository implements IUserRepository {
 
             // Map lean documents
             const users = userDocs
-                .map((doc) => this.mapToDomain(doc as IUserDocument)) // Cast needed
+                .map((doc) => this.mapToDomain(doc as unknown as IUserDocument)) // Cast through unknown first
                 .filter((user): user is User => user !== null); // Filter out potential nulls
 
             return { users, total };

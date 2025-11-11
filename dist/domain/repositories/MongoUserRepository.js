@@ -134,7 +134,7 @@ let MongoUserRepository = class MongoUserRepository {
             ]);
             // Map lean documents
             const users = userDocs
-                .map((doc) => this.mapToDomain(doc)) // Cast needed
+                .map((doc) => this.mapToDomain(doc)) // Cast through unknown first
                 .filter((user) => user !== null); // Filter out potential nulls
             return { users, total };
         }

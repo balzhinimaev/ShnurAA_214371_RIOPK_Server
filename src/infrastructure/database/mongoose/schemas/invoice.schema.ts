@@ -41,26 +41,26 @@ const InvoiceSchema = new Schema<IInvoiceDocument>(
     {
         timestamps: true,
         toJSON: {
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString();
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString();
                 // Преобразуем customerId в строку при выводе JSON
                 if (ret.customerId) {
-                    ret.customerId = ret.customerId.toString();
+                    ret.customerId = (ret.customerId as Types.ObjectId).toString();
                 }
                 delete ret._id;
-                delete ret.__v;
+                if (ret.__v !== undefined) delete ret.__v;
                 return ret;
             },
         },
         toObject: {
-            transform: (_doc, ret) => {
-                ret.id = ret._id.toString();
+            transform: (_doc, ret: any) => {
+                ret.id = (ret._id as Types.ObjectId).toString();
                 // Преобразуем customerId в строку при выводе JS объекта (для маппинга в Domain Entity)
                 if (ret.customerId) {
-                    ret.customerId = ret.customerId.toString();
+                    ret.customerId = (ret.customerId as Types.ObjectId).toString();
                 }
                 delete ret._id;
-                delete ret.__v;
+                if (ret.__v !== undefined) delete ret.__v;
                 return ret;
             },
         },

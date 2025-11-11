@@ -33,7 +33,8 @@ const InvoiceSchema = new mongoose_1.Schema({
                 ret.customerId = ret.customerId.toString();
             }
             delete ret._id;
-            delete ret.__v;
+            if (ret.__v !== undefined)
+                delete ret.__v;
             return ret;
         },
     },
@@ -45,7 +46,8 @@ const InvoiceSchema = new mongoose_1.Schema({
                 ret.customerId = ret.customerId.toString();
             }
             delete ret._id;
-            delete ret.__v;
+            if (ret.__v !== undefined)
+                delete ret.__v;
             return ret;
         },
     },

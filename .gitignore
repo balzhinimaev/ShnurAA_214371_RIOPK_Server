@@ -12,3 +12,4 @@ src/logs/combined.log
 *.log
 /coverage
 dist
+./dist
