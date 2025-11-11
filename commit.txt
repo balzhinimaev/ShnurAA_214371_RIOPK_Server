@@ -1,0 +1,136 @@
+feat: Реализация MVP системы управления дебиторской задолженностью
+
+РЕАЛИЗОВАННЫЕ ВОЗМОЖНОСТИ:
+
+1. РАСШИРЕНИЕ ДОМЕННОЙ МОДЕЛИ INVOICE
+   - Добавлены поля для специфики бизнеса:
+     * serviceStartDate/serviceEndDate - период оказания услуги
+     * serviceType - тип услуги (ПКТ, ККТ, торговые автоматы)
+     * manager - ответственный менеджер
+     * debtWorkStatus - статус работы с долгом (Прозвон, Претензия, Суд и т.д.)
+     * paymentTermDays - срок оплаты в днях
+     * actualPaymentDate - дата фактической оплаты
+     * lastContactDate - дата последнего контакта
+     * contactResult - результат контакта
+     * notes - примечания
+   
+   - Реализованы новые методы:
+     * getDaysOverdue() - расчет количества дней просрочки
+     * calculateDebtWorkStatus() - автоматический расчет статуса работы с долгом
+     * applyPayment() - применение частичной оплаты
+
+2. ОБНОВЛЕНИЕ СХЕМЫ БАЗЫ ДАННЫХ
+   - Расширена InvoiceSchema с новыми полями
+   - Добавлены индексы для оптимизации запросов:
+     * Составной индекс (customerId, invoiceNumber) - уникальность
+     * Индекс (manager, debtWorkStatus) - для фильтрации по менеджеру
+   - Поддержка всех новых типов enum (DebtWorkStatus, ServiceType)
+
+3. ИМПОРТ CSV ИЗ 1С
+   - Создан Process1cInvoiceUploadUseCase для обработки выгрузки1c.csv
+   - Реализован ServiceTypeMapper для маппинга типов услуг
+   - Создан Invoice1cCsvRowDto для валидации CSV строк
+   - Автоматическое создание контрагентов по ИНН
+   - Автоматический расчет статусов работы с долгом
+   - Обновление существующих счетов при повторной загрузке
+
+4. РАСШИРЕННЫЙ DASHBOARD
+   - Добавлены новые метрики:
+     * overduePercentage - процент просроченной задолженности
+     * currentReceivables - непросроченная задолженность
+     * averagePaymentDelayDays - средний срок просрочки
+     * totalInvoicesCount - общее количество счетов
+     * overdueInvoicesCount - количество просроченных счетов
+   - Улучшена агрегация MongoDB для расчета всех метрик
+   - Исправлена потеря данных при группировках в пайплайне
+
+5. ТОП-10 ДОЛЖНИКОВ
+   - Создан GetTopDebtorsUseCase
+   - Реализована агрегация по клиентам с группировкой долгов
+   - Возвращает детальную статистику:
+     * Общая задолженность
+     * Просроченная задолженность
+     * Количество счетов
+     * Старейший долг в днях
+
+6. СПИСОК СЧЕТОВ С ФИЛЬТРАЦИЕЙ
+   - Создан ListInvoicesUseCase
+   - Реализована фильтрация по 10+ параметрам:
+     * Статус счета (OPEN, PAID, OVERDUE)
+     * Статус работы с долгом (IN_TIME, CALL, CLAIM, PRE_TRIAL, TRIAL, COLLECTION, WRITE_OFF, CLOSED)
+     * Тип услуги
+     * Менеджер (частичное совпадение)
+     * ID клиента
+     * Только просроченные
+     * Диапазон сумм задолженности
+     * Диапазон дат срока оплаты
+   - Пагинация и сортировка
+   - Populate связанных данных о клиентах
+
+7. ПРИМЕНЕНИЕ ЧАСТИЧНОЙ ОПЛАТЫ
+   - Создан ApplyPaymentUseCase
+   - Валидация сумм оплаты
+   - Автоматическое обновление статусов при полной оплате
+   - Обновление даты фактической оплаты
+
+8. API ENDPOINTS
+   - GET /api/v1/reports/dashboard/summary - расширенная сводка
+   - GET /api/v1/reports/top-debtors?limit=10 - топ должников
+   - GET /api/v1/reports/invoices - список с фильтрацией
+   - POST /api/v1/reports/invoices/apply-payment - применение оплаты
+   - Все эндпоинты защищены JWT аутентификацией
+   - Swagger документация обновлена
+
+9. ИСПРАВЛЕНИЯ ТЕХНИЧЕСКИХ ОШИБОК
+   - Исправлена типизация MongoDB агрегационных пайплайнов
+   - Исправлена потеря полей при группировках в getDashboardSummary
+   - Добавлены явные типы для всех агрегационных пайплайнов
+
+10. ДОКУМЕНТАЦИЯ
+    - Создан MVP_RECEIVABLES_MANAGEMENT.md с полным описанием API
+    - Примеры использования всех эндпоинтов
+    - Описание типов услуг и статусов работы с долгом
+    - Инструкции по развертыванию и тестированию
+
+ИЗМЕНЕННЫЕ ФАЙЛЫ:
+- src/domain/entities/invoice.entity.ts - расширена модель
+- src/domain/repositories/IInvoiceRepository.ts - расширен интерфейс
+- src/infrastructure/database/mongoose/schemas/invoice.schema.ts - новые поля
+- src/infrastructure/database/mongoose/repositories/invoice.repository.ts - новые методы
+- src/application/dtos/reports/dashboard-summary.dto.ts - новые метрики
+- src/infrastructure/web/express/controllers/report.controller.ts - новые методы
+- src/infrastructure/web/express/routes/report.routes.ts - новые роуты
+- src/infrastructure/di/container.config.ts - регистрация use-cases
+
+НОВЫЕ ФАЙЛЫ:
+- src/application/dtos/data-uploads/invoice-1c-row.dto.ts
+- src/application/use-cases/data-uploads/service-type.mapper.ts
+- src/application/use-cases/data-uploads/process-1c-invoice-upload.use-case.ts
+- src/application/use-cases/reports/list-invoices.use-case.ts
+- src/application/use-cases/reports/get-top-debtors.use-case.ts
+- src/application/use-cases/reports/apply-payment.use-case.ts
+- MVP_RECEIVABLES_MANAGEMENT.md
+
+ТЕХНИЧЕСКИЕ ДЕТАЛИ:
+- Clean Architecture (Domain, Application, Infrastructure)
+- Dependency Injection через tsyringe
+- MongoDB агрегационные пайплайны для аналитики
+- TypeScript строгая типизация
+- Express.js REST API
+- JWT аутентификация
+- Swagger документация
+
+АРХИТЕКТУРНЫЕ УЛУЧШЕНИЯ:
+- Разделение ответственности между слоями
+- Расширяемость через интерфейсы
+- Оптимизация запросов через индексы
+- Обработка ошибок через AppError
+- Валидация данных на всех уровнях
+
+ГОТОВНОСТЬ:
+✅ Все функции реализованы
+✅ Ошибки TypeScript исправлены
+✅ Линтер не показывает ошибок
+✅ Swagger документация обновлена
+✅ Готово к тестированию и интеграции с фронтендом
+

@@ -45,7 +45,11 @@ import { JsonWebTokenService } from '../services/jsonwebtoken.service';
 import { RegisterUserUseCase } from '../../application/use-cases/auth/register-user.use-case';
 import { LoginUserUseCase } from '../../application/use-cases/auth/login-user.use-case';
 import { GetDashboardSummaryUseCase } from '../../application/use-cases/reports/get-dashboard-summary.use-case';
+import { GetTopDebtorsUseCase } from '../../application/use-cases/reports/get-top-debtors.use-case';
+import { ListInvoicesUseCase } from '../../application/use-cases/reports/list-invoices.use-case';
+import { ApplyPaymentUseCase } from '../../application/use-cases/reports/apply-payment.use-case';
 import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
+import { Process1cInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case';
 
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 
@@ -99,9 +103,24 @@ container.register<LoginUserUseCase>(LoginUserUseCase, {
 container.register<GetDashboardSummaryUseCase>(GetDashboardSummaryUseCase, {
     useClass: GetDashboardSummaryUseCase,
 });
+container.register<GetTopDebtorsUseCase>(GetTopDebtorsUseCase, {
+    useClass: GetTopDebtorsUseCase,
+});
+container.register<ListInvoicesUseCase>(ListInvoicesUseCase, {
+    useClass: ListInvoicesUseCase,
+});
+container.register<ApplyPaymentUseCase>(ApplyPaymentUseCase, {
+    useClass: ApplyPaymentUseCase,
+});
 container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, {
     useClass: ProcessInvoiceUploadUseCase,
 });
+container.register<Process1cInvoiceUploadUseCase>(
+    Process1cInvoiceUploadUseCase,
+    {
+        useClass: Process1cInvoiceUploadUseCase,
+    },
+);
 
 // --- Регистрация Controllers ---
 // Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.

@@ -56,6 +56,31 @@ class AgingBucketDto {
  *           format: float
  *           description: Сумма просроченной дебиторской задолженности.
  *           example: 315200.50
+ *         overduePercentage:
+ *           type: number
+ *           format: float
+ *           description: Процент просроченной задолженности от общей.
+ *           example: 25.2
+ *         currentReceivables:
+ *           type: number
+ *           format: float
+ *           description: Сумма задолженности в срок (не просроченной).
+ *           example: 935400.25
+ *         averagePaymentDelayDays:
+ *           type: number
+ *           format: float
+ *           description: Средний срок задержки оплаты (в днях).
+ *           example: 15.5
+ *         totalInvoicesCount:
+ *           type: number
+ *           format: integer
+ *           description: Общее количество неоплаченных счетов.
+ *           example: 42
+ *         overdueInvoicesCount:
+ *           type: number
+ *           format: integer
+ *           description: Количество просроченных счетов.
+ *           example: 18
  *         agingStructure:
  *           type: array
  *           description: Структура дебиторской задолженности по срокам возникновения (старения).
@@ -64,6 +89,11 @@ class AgingBucketDto {
  *       required:
  *         - totalReceivables
  *         - overdueReceivables
+ *         - overduePercentage
+ *         - currentReceivables
+ *         - averagePaymentDelayDays
+ *         - totalInvoicesCount
+ *         - overdueInvoicesCount
  *         - agingStructure
  */
 export class DashboardSummaryDto {
@@ -72,6 +102,21 @@ export class DashboardSummaryDto {
 
     @Expose()
     overdueReceivables!: number;
+
+    @Expose()
+    overduePercentage!: number; // % просроченной ДЗ
+
+    @Expose()
+    currentReceivables!: number; // Непросроченная ДЗ
+
+    @Expose()
+    averagePaymentDelayDays!: number; // Средний срок просрочки
+
+    @Expose()
+    totalInvoicesCount!: number; // Общее количество счетов
+
+    @Expose()
+    overdueInvoicesCount!: number; // Количество просроченных счетов
 
     @Expose()
     @Type(() => AgingBucketDto)

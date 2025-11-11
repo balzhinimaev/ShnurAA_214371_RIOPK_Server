@@ -10,6 +10,11 @@ export interface AgingBucket {
 export interface DashboardSummaryData {
     totalReceivables: number;
     overdueReceivables: number;
+    overduePercentage: number;
+    currentReceivables: number;
+    averagePaymentDelayDays: number;
+    totalInvoicesCount: number;
+    overdueInvoicesCount: number;
     agingStructure: AgingBucket[];
 }
 
