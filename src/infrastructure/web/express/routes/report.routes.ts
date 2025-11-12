@@ -305,6 +305,91 @@ router.get('/abc-analysis', reportController.getAbcAnalysis);
 
 /**
  * @openapi
+ * /reports/risk-concentration:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Анализ концентрации рисков
+ *     description: Возвращает удельный вес дебиторской задолженности по контрагентам в процентах от общей суммы. Позволяет выявить концентрацию рисков.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Дата расчета (опционально, по умолчанию - текущая дата)
+ *       - in: query
+ *         name: minPercentage
+ *         schema:
+ *           type: number
+ *         description: Минимальный процент для фильтрации контрагентов (опционально)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Ограничение количества контрагентов в результате (опционально)
+ *     responses:
+ *       200:
+ *         description: Результат анализа концентрации рисков.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 customers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       customerId:
+ *                         type: string
+ *                       customerName:
+ *                         type: string
+ *                       customerUnp:
+ *                         type: string
+ *                       totalDebt:
+ *                         type: number
+ *                       overdueDebt:
+ *                         type: number
+ *                       invoiceCount:
+ *                         type: integer
+ *                       oldestDebtDays:
+ *                         type: integer
+ *                       percentageOfTotal:
+ *                         type: number
+ *                         description: Удельный вес задолженности контрагента в процентах от общей суммы ДЗ
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalCustomers:
+ *                       type: integer
+ *                       description: Общее количество контрагентов с задолженностью
+ *                     totalDebt:
+ *                       type: number
+ *                       description: Общая сумма задолженности
+ *                     asOfDate:
+ *                       type: string
+ *                       format: date-time
+ *                       description: Дата расчета
+ *                     maxConcentration:
+ *                       type: number
+ *                       description: Максимальная концентрация (процент самого крупного должника)
+ *                     top5Concentration:
+ *                       type: number
+ *                       description: Концентрация топ-5 должников (%)
+ *                     top10Concentration:
+ *                       type: number
+ *                       description: Концентрация топ-10 должников (%)
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/risk-concentration', reportController.getRiskConcentration);
+
+/**
+ * @openapi
  * /reports/invoices:
  *   get:
  *     tags: [Отчеты]

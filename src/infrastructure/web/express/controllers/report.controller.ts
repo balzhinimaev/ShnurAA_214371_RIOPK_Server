@@ -7,6 +7,7 @@ import { ListInvoicesUseCase } from '../../../../application/use-cases/reports/l
 import { ApplyPaymentUseCase } from '../../../../application/use-cases/reports/apply-payment.use-case';
 import { GetCustomersOverdueUseCase } from '../../../../application/use-cases/reports/get-customers-overdue.use-case';
 import { GetAbcAnalysisUseCase } from '../../../../application/use-cases/reports/get-abc-analysis.use-case';
+import { GetRiskConcentrationUseCase } from '../../../../application/use-cases/reports/get-risk-concentration.use-case';
 import { AgingBucket } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
 
 export class ReportController {
@@ -249,6 +250,39 @@ export class ReportController {
 
             const result = await getAbcAnalysisUseCase.execute({
                 asOfDate,
+            });
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getRiskConcentration(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getRiskConcentrationUseCase = container.resolve(
+                GetRiskConcentrationUseCase,
+            );
+
+            // Опциональные параметры
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate as string)
+                : undefined;
+            const minPercentage = req.query.minPercentage
+                ? parseFloat(req.query.minPercentage as string)
+                : undefined;
+            const limit = req.query.limit
+                ? parseInt(req.query.limit as string)
+                : undefined;
+
+            const result = await getRiskConcentrationUseCase.execute({
+                asOfDate,
+                minPercentage,
+                limit,
             });
 
             res.status(200).json(result);
