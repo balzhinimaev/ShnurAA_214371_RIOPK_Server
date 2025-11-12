@@ -6,6 +6,7 @@ import { GetTopDebtorsUseCase } from '../../../../application/use-cases/reports/
 import { ListInvoicesUseCase } from '../../../../application/use-cases/reports/list-invoices.use-case';
 import { ApplyPaymentUseCase } from '../../../../application/use-cases/reports/apply-payment.use-case';
 import { GetCustomersOverdueUseCase } from '../../../../application/use-cases/reports/get-customers-overdue.use-case';
+import { GetAbcAnalysisUseCase } from '../../../../application/use-cases/reports/get-abc-analysis.use-case';
 import { AgingBucket } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
 
 export class ReportController {
@@ -223,6 +224,31 @@ export class ReportController {
                 offset,
                 sortBy,
                 sortOrder,
+            });
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getAbcAnalysis(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getAbcAnalysisUseCase = container.resolve(
+                GetAbcAnalysisUseCase,
+            );
+
+            // Опциональный параметр даты расчета
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate as string)
+                : undefined;
+
+            const result = await getAbcAnalysisUseCase.execute({
+                asOfDate,
             });
 
             res.status(200).json(result);

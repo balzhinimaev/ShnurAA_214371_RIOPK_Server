@@ -60,6 +60,17 @@ export interface TopDebtorDto {
     oldestDebtDays: number;
 }
 
+// DTO для контрагента с задолженностью (для ABC-анализа)
+export interface CustomerDebtDto {
+    customerId: string;
+    customerName: string;
+    customerUnp?: string;
+    totalDebt: number;
+    overdueDebt: number;
+    invoiceCount: number;
+    oldestDebtDays: number;
+}
+
 // Расширяем базовый интерфейс для ясности
 interface IInvoiceRepositoryExtended extends IInvoiceRepository {
     create(
@@ -87,6 +98,7 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
     ): Promise<Invoice | null>;
     findAll(options: ListInvoicesOptions): Promise<ListInvoicesResult>;
     getTopDebtors(limit: number, asOfDate: Date): Promise<TopDebtorDto[]>;
+    getAllCustomersWithDebt(asOfDate: Date): Promise<CustomerDebtDto[]>;
 }
 
 @injectable()
@@ -1198,6 +1210,102 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
         } catch (error) {
             console.error('Error getting top debtors:', error);
             throw new AppError('Ошибка при получении топ должников', 500);
+        }
+    }
+
+    /**
+     * Получает всех контрагентов с задолженностью для ABC-анализа.
+     * Аналогично getTopDebtors, но без ограничения по количеству.
+     */
+    async getAllCustomersWithDebt(
+        asOfDate: Date = new Date(),
+    ): Promise<CustomerDebtDto[]> {
+        try {
+            const pipeline: any[] = [
+                // Берем только неоплаченные счета
+                { $match: { status: { $ne: 'PAID' } } },
+                // Вычисляем остаток задолженности
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                        isOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: true,
+                                else: false,
+                            },
+                        },
+                        daysOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: {
+                                    $dateDiff: {
+                                        startDate: '$dueDate',
+                                        endDate: asOfDate,
+                                        unit: 'day',
+                                    },
+                                },
+                                else: 0,
+                            },
+                        },
+                    },
+                },
+                // Фильтруем только те, у кого есть задолженность
+                { $match: { outstandingAmount: { $gt: 0 } } },
+                // Группируем по клиенту
+                {
+                    $group: {
+                        _id: '$customerId',
+                        totalDebt: { $sum: '$outstandingAmount' },
+                        overdueDebt: {
+                            $sum: {
+                                $cond: ['$isOverdue', '$outstandingAmount', 0],
+                            },
+                        },
+                        invoiceCount: { $sum: 1 },
+                        oldestDebtDays: { $max: '$daysOverdue' },
+                    },
+                },
+                // Сортируем по общей задолженности (по убыванию)
+                { $sort: { totalDebt: -1 } },
+                // Подтягиваем данные о клиенте
+                {
+                    $lookup: {
+                        from: 'customers',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'customer',
+                    },
+                },
+                // Разворачиваем массив customer
+                { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+                // Формируем финальный объект
+                {
+                    $project: {
+                        _id: 0,
+                        customerId: { $toString: '$_id' },
+                        customerName: {
+                            $ifNull: ['$customer.name', 'Unknown Customer'],
+                        },
+                        customerUnp: '$customer.unp',
+                        totalDebt: { $round: ['$totalDebt', 2] },
+                        overdueDebt: { $round: ['$overdueDebt', 2] },
+                        invoiceCount: 1,
+                        oldestDebtDays: 1,
+                    },
+                },
+            ];
+
+            const result = await InvoiceModel.aggregate(pipeline).exec();
+            return result as CustomerDebtDto[];
+        } catch (error) {
+            console.error('Error getting all customers with debt:', error);
+            throw new AppError(
+                'Ошибка при получении контрагентов с задолженностью',
+                500,
+            );
         }
     }
 

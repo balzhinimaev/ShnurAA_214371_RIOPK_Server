@@ -192,6 +192,119 @@ router.get('/customers-overdue', reportController.getCustomersWithOverdue);
 
 /**
  * @openapi
+ * /reports/abc-analysis:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: ABC-анализ контрагентов
+ *     description: Группировка контрагентов по принципу Парето (80/20) для выявления ключевых должников. Группа A - до 80% задолженности, группа B - от 80% до 95%, группа C - от 95% до 100%.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Дата расчета (опционально, по умолчанию - текущая дата)
+ *     responses:
+ *       200:
+ *         description: Результат ABC-анализа контрагентов.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 groupA:
+ *                   type: object
+ *                   properties:
+ *                     group:
+ *                       type: string
+ *                       enum: [A]
+ *                     customers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           customerId:
+ *                             type: string
+ *                           customerName:
+ *                             type: string
+ *                           customerUnp:
+ *                             type: string
+ *                           totalDebt:
+ *                             type: number
+ *                           overdueDebt:
+ *                             type: number
+ *                           invoiceCount:
+ *                             type: integer
+ *                           oldestDebtDays:
+ *                             type: integer
+ *                           cumulativePercentage:
+ *                             type: number
+ *                             description: Накопительный процент от общей суммы задолженности
+ *                     totalDebt:
+ *                       type: number
+ *                     percentageOfTotal:
+ *                       type: number
+ *                     customerCount:
+ *                       type: integer
+ *                     percentageOfCustomers:
+ *                       type: number
+ *                 groupB:
+ *                   type: object
+ *                   properties:
+ *                     group:
+ *                       type: string
+ *                       enum: [B]
+ *                     customers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     totalDebt:
+ *                       type: number
+ *                     percentageOfTotal:
+ *                       type: number
+ *                     customerCount:
+ *                       type: integer
+ *                     percentageOfCustomers:
+ *                       type: number
+ *                 groupC:
+ *                   type: object
+ *                   properties:
+ *                     group:
+ *                       type: string
+ *                       enum: [C]
+ *                     customers:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     totalDebt:
+ *                       type: number
+ *                     percentageOfTotal:
+ *                       type: number
+ *                     customerCount:
+ *                       type: integer
+ *                     percentageOfCustomers:
+ *                       type: number
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalCustomers:
+ *                       type: integer
+ *                     totalDebt:
+ *                       type: number
+ *                     asOfDate:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/abc-analysis', reportController.getAbcAnalysis);
+
+/**
+ * @openapi
  * /reports/invoices:
  *   get:
  *     tags: [Отчеты]

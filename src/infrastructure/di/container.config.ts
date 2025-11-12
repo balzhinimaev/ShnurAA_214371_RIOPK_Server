@@ -48,6 +48,8 @@ import { GetDashboardSummaryUseCase } from '../../application/use-cases/reports/
 import { GetTopDebtorsUseCase } from '../../application/use-cases/reports/get-top-debtors.use-case';
 import { ListInvoicesUseCase } from '../../application/use-cases/reports/list-invoices.use-case';
 import { ApplyPaymentUseCase } from '../../application/use-cases/reports/apply-payment.use-case';
+import { GetCustomersOverdueUseCase } from '../../application/use-cases/reports/get-customers-overdue.use-case';
+import { GetAbcAnalysisUseCase } from '../../application/use-cases/reports/get-abc-analysis.use-case';
 import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
 import { Process1cInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case';
 
@@ -111,6 +113,12 @@ container.register<ListInvoicesUseCase>(ListInvoicesUseCase, {
 });
 container.register<ApplyPaymentUseCase>(ApplyPaymentUseCase, {
     useClass: ApplyPaymentUseCase,
+});
+container.register<GetCustomersOverdueUseCase>(GetCustomersOverdueUseCase, {
+    useClass: GetCustomersOverdueUseCase,
+});
+container.register<GetAbcAnalysisUseCase>(GetAbcAnalysisUseCase, {
+    useClass: GetAbcAnalysisUseCase,
 });
 container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, {
     useClass: ProcessInvoiceUploadUseCase,
