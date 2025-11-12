@@ -238,6 +238,33 @@ router.get('/customers-overdue', reportController.getCustomersWithOverdue);
  *           type: integer
  *         description: Максимальное количество дней просрочки (например, 60 для счетов с просрочкой до 60 дней)
  *       - in: query
+ *         name: customerId
+ *         schema:
+ *           type: string
+ *         description: Фильтр по ID клиента
+ *       - in: query
+ *         name: minAmount
+ *         schema:
+ *           type: number
+ *         description: Минимальная сумма задолженности
+ *       - in: query
+ *         name: maxAmount
+ *         schema:
+ *           type: number
+ *         description: Максимальная сумма задолженности
+ *       - in: query
+ *         name: dueDateFrom
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Срок оплаты от (ISO date)
+ *       - in: query
+ *         name: dueDateTo
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Срок оплаты до (ISO date)
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer

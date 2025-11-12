@@ -86,6 +86,21 @@ class AgingBucketDto {
  *           description: Структура дебиторской задолженности по срокам возникновения (старения).
  *           items:
  *             $ref: '#/components/schemas/AgingBucketDto' # Ссылка на схему корзины
+ *         averageReceivables:
+ *           type: number
+ *           format: float
+ *           description: Средняя дебиторская задолженность за период (текущий месяц). Рассчитывается как (ДЗ на начало периода + ДЗ на конец периода) / 2.
+ *           example: 250000.00
+ *         turnoverRatio:
+ *           type: number
+ *           format: float
+ *           description: Оборачиваемость дебиторской задолженности. Показывает, сколько раз за период ДЗ превратилась в денежные средства. Рассчитывается как выручка за период / средняя ДЗ.
+ *           example: 4.5
+ *         periodRevenue:
+ *           type: number
+ *           format: float
+ *           description: Выручка за период (текущий месяц). Сумма всех счетов, созданных в текущем месяце.
+ *           example: 1125000.00
  *       required:
  *         - totalReceivables
  *         - overdueReceivables
@@ -95,6 +110,9 @@ class AgingBucketDto {
  *         - totalInvoicesCount
  *         - overdueInvoicesCount
  *         - agingStructure
+ *         - averageReceivables
+ *         - turnoverRatio
+ *         - periodRevenue
  */
 export class DashboardSummaryDto {
     @Expose()
@@ -121,4 +139,13 @@ export class DashboardSummaryDto {
     @Expose()
     @Type(() => AgingBucketDto)
     agingStructure!: AgingBucketDto[];
+
+    @Expose()
+    averageReceivables!: number; // Средняя ДЗ за период
+
+    @Expose()
+    turnoverRatio!: number; // Оборачиваемость ДЗ
+
+    @Expose()
+    periodRevenue!: number; // Выручка за период
 }

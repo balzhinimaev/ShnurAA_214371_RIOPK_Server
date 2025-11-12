@@ -75,6 +75,20 @@ beforeAll(async () => {
         console.log(
             `[JEST_SETUP] Re-registered DI token ${String(JwtServiceToken)}.`,
         );
+        
+        // Регистрируем InvoiceRepository для тестов
+        const invoiceRepoModule = await import('../src/domain/repositories/IInvoiceRepository');
+        const invoiceRepoImpl = await import(
+            '../src/infrastructure/database/mongoose/repositories/invoice.repository'
+        );
+        
+        container.register(invoiceRepoModule.InvoiceRepositoryToken, {
+            useClass: invoiceRepoImpl.MongoInvoiceRepository,
+        });
+        console.log(
+            `[JEST_SETUP] Re-registered DI token ${String(invoiceRepoModule.InvoiceRepositoryToken)}.`,
+        );
+        
         // ---> ДОБАВЬТЕ РЕГИСТРАЦИЮ ДРУГИХ ЗАВИСИМОСТЕЙ ЗДЕСЬ <---
 
         console.log(

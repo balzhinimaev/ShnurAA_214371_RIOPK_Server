@@ -25,7 +25,7 @@ export interface IInvoiceDocument extends InvoiceDocumentProps, Document {
 }
 
 // 3. Расширенная схема с новыми полями
-const InvoiceSchema = new Schema<IInvoiceDocument>(
+export const InvoiceSchema = new Schema<IInvoiceDocument>(
     {
         invoiceNumber: { type: String, required: true, index: true },
         customerId: {

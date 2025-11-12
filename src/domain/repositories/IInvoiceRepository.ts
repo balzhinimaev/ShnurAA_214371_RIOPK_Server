@@ -16,6 +16,10 @@ export interface DashboardSummaryData {
     totalInvoicesCount: number;
     overdueInvoicesCount: number;
     agingStructure: AgingBucket[];
+    // Новые показатели согласно требованиям
+    averageReceivables: number; // Средняя ДЗ за период
+    turnoverRatio: number; // Оборачиваемость ДЗ
+    periodRevenue: number; // Выручка за период (для расчета оборачиваемости)
 }
 
 export interface IInvoiceRepository {

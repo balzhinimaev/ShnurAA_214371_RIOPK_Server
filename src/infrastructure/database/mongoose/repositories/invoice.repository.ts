@@ -314,6 +314,159 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
     }
 
     /**
+     * Рассчитывает показатели оборачиваемости ДЗ за период (текущий месяц)
+     * Согласно требованиям: оборачиваемость = выручка за период / средняя ДЗ
+     * Средняя ДЗ = (ДЗ на начало периода + ДЗ на конец периода) / 2
+     * 
+     * @param currentDate - Текущая дата расчета
+     * @returns Метрики оборачиваемости
+     */
+    private async calculateTurnoverMetrics(currentDate: Date): Promise<{
+        averageReceivables: number;
+        turnoverRatio: number;
+        periodRevenue: number;
+    }> {
+        try {
+            // Определяем период: текущий месяц (с начала месяца до текущей даты)
+            const periodStart = new Date(
+                currentDate.getFullYear(),
+                currentDate.getMonth(),
+                1,
+            ); // Первый день текущего месяца
+            const periodEnd = currentDate;
+
+            // 1. Рассчитываем ДЗ на начало периода (начало месяца)
+            // ДЗ на начало = сумма всех неоплаченных остатков счетов, созданных до начала периода
+            const receivablesAtStartPipeline: any[] = [
+                {
+                    $match: {
+                        issueDate: { $lt: periodStart }, // Счета, созданные до начала периода
+                        status: { $ne: 'PAID' }, // Не полностью оплаченные
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                {
+                    $match: { outstandingAmount: { $gt: 0 } },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalReceivablesAtStart: {
+                            $sum: '$outstandingAmount',
+                        },
+                    },
+                },
+            ];
+
+            const receivablesAtStartResult = await InvoiceModel.aggregate(
+                receivablesAtStartPipeline,
+            ).exec();
+            const receivablesAtStart =
+                receivablesAtStartResult.length > 0
+                    ? receivablesAtStartResult[0].totalReceivablesAtStart || 0
+                    : 0;
+
+            // 2. Рассчитываем ДЗ на конец периода (текущая дата)
+            // Используем ту же логику, что и в getDashboardSummary
+            const receivablesAtEndPipeline: any[] = [
+                {
+                    $match: {
+                        status: { $ne: 'PAID' },
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                {
+                    $match: { outstandingAmount: { $gt: 0 } },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalReceivablesAtEnd: {
+                            $sum: '$outstandingAmount',
+                        },
+                    },
+                },
+            ];
+
+            const receivablesAtEndResult = await InvoiceModel.aggregate(
+                receivablesAtEndPipeline,
+            ).exec();
+            const receivablesAtEnd =
+                receivablesAtEndResult.length > 0
+                    ? receivablesAtEndResult[0].totalReceivablesAtEnd || 0
+                    : 0;
+
+            // 3. Рассчитываем среднюю ДЗ
+            const averageReceivables =
+                (receivablesAtStart + receivablesAtEnd) / 2;
+
+            // 4. Рассчитываем выручку за период
+            // Выручка = сумма всех счетов (totalAmount), созданных в периоде
+            const revenuePipeline: any[] = [
+                {
+                    $match: {
+                        issueDate: {
+                            $gte: periodStart,
+                            $lte: periodEnd,
+                        },
+                    },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: '$totalAmount' },
+                    },
+                },
+            ];
+
+            const revenueResult = await InvoiceModel.aggregate(
+                revenuePipeline,
+            ).exec();
+            const periodRevenue =
+                revenueResult.length > 0
+                    ? revenueResult[0].totalRevenue || 0
+                    : 0;
+
+            // 5. Рассчитываем оборачиваемость ДЗ
+            // Оборачиваемость = выручка за период / средняя ДЗ
+            // Если средняя ДЗ = 0, то оборачиваемость = 0 (избегаем деления на ноль)
+            const turnoverRatio =
+                averageReceivables > 0
+                    ? parseFloat((periodRevenue / averageReceivables).toFixed(2))
+                    : 0;
+
+            return {
+                averageReceivables: parseFloat(averageReceivables.toFixed(2)),
+                turnoverRatio,
+                periodRevenue: parseFloat(periodRevenue.toFixed(2)),
+            };
+        } catch (error) {
+            console.error(
+                'Error calculating turnover metrics:',
+                error,
+            );
+            // В случае ошибки возвращаем нулевые значения
+            return {
+                averageReceivables: 0,
+                turnoverRatio: 0,
+                periodRevenue: 0,
+            };
+        }
+    }
+
+    /**
      * Рассчитывает сводку для дашборда с расширенной аналитикой.
      * @param currentDate - Дата, на которую рассчитывается сводка (по умолчанию текущая).
      * @returns Промис с данными для дашборда.
@@ -561,6 +714,11 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     (summary.averageDaysOverdue || 0).toFixed(1),
                 );
 
+                // Рассчитываем показатели оборачиваемости ДЗ
+                const periodMetrics = await this.calculateTurnoverMetrics(
+                    currentDate,
+                );
+
                 const dashboardData: DashboardSummaryData = {
                     totalReceivables,
                     overdueReceivables,
@@ -570,6 +728,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     totalInvoicesCount: summary.totalInvoicesCount || 0,
                     overdueInvoicesCount: summary.overdueInvoicesCount || 0,
                     agingStructure: summary.agingStructure,
+                    averageReceivables: periodMetrics.averageReceivables,
+                    turnoverRatio: periodMetrics.turnoverRatio,
+                    periodRevenue: periodMetrics.periodRevenue,
                 };
 
                 return dashboardData;
@@ -582,6 +743,12 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     '61-90',
                     '91+',
                 ];
+                
+                // Рассчитываем показатели оборачиваемости даже если нет текущей ДЗ
+                const periodMetrics = await this.calculateTurnoverMetrics(
+                    currentDate,
+                );
+                
                 return {
                     totalReceivables: 0,
                     overdueReceivables: 0,
@@ -595,6 +762,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                         amount: 0,
                         count: 0,
                     })),
+                    averageReceivables: periodMetrics.averageReceivables,
+                    turnoverRatio: periodMetrics.turnoverRatio,
+                    periodRevenue: periodMetrics.periodRevenue,
                 };
             }
         } catch (error) {
