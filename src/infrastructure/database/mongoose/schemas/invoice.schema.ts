@@ -87,6 +87,7 @@ export const InvoiceSchema = new Schema<IInvoiceDocument>(
             index: true,
         },
         manager: { type: String, index: true },
+        contractNumber: { type: String, index: true }, // Номер договора
         
         // История работы с долгом
         lastContactDate: { type: Date },

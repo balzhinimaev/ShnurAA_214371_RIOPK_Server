@@ -105,6 +105,12 @@ class Invoice {
             writable: true,
             value: void 0
         }); // Менеджер, ответственный за клиента
+        Object.defineProperty(this, "contractNumber", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Номер договора
         // История работы с долгом
         Object.defineProperty(this, "lastContactDate", {
             enumerable: true,
@@ -153,6 +159,7 @@ class Invoice {
         this.debtWorkStatus = props.debtWorkStatus;
         this.serviceType = props.serviceType;
         this.manager = props.manager;
+        this.contractNumber = props.contractNumber;
         this.lastContactDate = props.lastContactDate;
         this.contactResult = props.contactResult;
         this.notes = props.notes;

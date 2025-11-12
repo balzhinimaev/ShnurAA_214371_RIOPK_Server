@@ -8,6 +8,7 @@ import { ApplyPaymentUseCase } from '../../../../application/use-cases/reports/a
 import { GetCustomersOverdueUseCase } from '../../../../application/use-cases/reports/get-customers-overdue.use-case';
 import { GetAbcAnalysisUseCase } from '../../../../application/use-cases/reports/get-abc-analysis.use-case';
 import { GetRiskConcentrationUseCase } from '../../../../application/use-cases/reports/get-risk-concentration.use-case';
+import { GetContractAnalysisUseCase } from '../../../../application/use-cases/reports/get-contract-analysis.use-case';
 import { AgingBucket } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
 
 export class ReportController {
@@ -283,6 +284,37 @@ export class ReportController {
                 asOfDate,
                 minPercentage,
                 limit,
+            });
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getContractAnalysis(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getContractAnalysisUseCase = container.resolve(
+                GetContractAnalysisUseCase,
+            );
+
+            // Опциональные параметры
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate as string)
+                : undefined;
+            const customerId = req.query.customerId as string | undefined;
+            const contractNumber = req.query.contractNumber as string | undefined;
+            const includePaid = req.query.includePaid === 'true';
+
+            const result = await getContractAnalysisUseCase.execute({
+                asOfDate,
+                customerId,
+                contractNumber,
+                includePaid,
             });
 
             res.status(200).json(result);

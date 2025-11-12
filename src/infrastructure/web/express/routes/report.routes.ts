@@ -390,6 +390,139 @@ router.get('/risk-concentration', reportController.getRiskConcentration);
 
 /**
  * @openapi
+ * /reports/contract-analysis:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Анализ в разрезе договоров
+ *     description: Возвращает детализацию дебиторской задолженности по договорам с информацией о всех счетах по каждому договору.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Дата расчета (опционально, по умолчанию - текущая дата)
+ *       - in: query
+ *         name: customerId
+ *         schema:
+ *           type: string
+ *         description: Фильтр по ID контрагента (опционально)
+ *       - in: query
+ *         name: contractNumber
+ *         schema:
+ *           type: string
+ *         description: Фильтр по номеру договора (опционально)
+ *       - in: query
+ *         name: includePaid
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Включать ли оплаченные счета (по умолчанию false)
+ *     responses:
+ *       200:
+ *         description: Результат анализа по договорам.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 contracts:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       contractNumber:
+ *                         type: string
+ *                         description: Номер договора
+ *                       customerId:
+ *                         type: string
+ *                       customerName:
+ *                         type: string
+ *                       customerUnp:
+ *                         type: string
+ *                       serviceType:
+ *                         type: string
+ *                       manager:
+ *                         type: string
+ *                       totalDebt:
+ *                         type: number
+ *                         description: Общая задолженность по договору
+ *                       overdueDebt:
+ *                         type: number
+ *                         description: Просроченная задолженность
+ *                       currentDebt:
+ *                         type: number
+ *                         description: Текущая задолженность (без просрочки)
+ *                       invoiceCount:
+ *                         type: integer
+ *                         description: Количество счетов по договору
+ *                       overdueInvoiceCount:
+ *                         type: integer
+ *                         description: Количество просроченных счетов
+ *                       oldestDebtDays:
+ *                         type: integer
+ *                         description: Возраст самой старой задолженности (в днях)
+ *                       invoices:
+ *                         type: array
+ *                         items:
+ *                           type: object
+ *                           properties:
+ *                             invoiceId:
+ *                               type: string
+ *                             invoiceNumber:
+ *                               type: string
+ *                             issueDate:
+ *                               type: string
+ *                               format: date-time
+ *                             dueDate:
+ *                               type: string
+ *                               format: date-time
+ *                             totalAmount:
+ *                               type: number
+ *                             paidAmount:
+ *                               type: number
+ *                             outstandingAmount:
+ *                               type: number
+ *                             overdueAmount:
+ *                               type: number
+ *                             daysOverdue:
+ *                               type: integer
+ *                             status:
+ *                               type: string
+ *                             debtWorkStatus:
+ *                               type: string
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalContracts:
+ *                       type: integer
+ *                       description: Общее количество договоров с задолженностью
+ *                     totalDebt:
+ *                       type: number
+ *                       description: Общая сумма задолженности
+ *                     totalOverdueDebt:
+ *                       type: number
+ *                       description: Общая просроченная задолженность
+ *                     totalInvoices:
+ *                       type: integer
+ *                       description: Общее количество счетов
+ *                     totalOverdueInvoices:
+ *                       type: integer
+ *                       description: Общее количество просроченных счетов
+ *                     asOfDate:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/contract-analysis', reportController.getContractAnalysis);
+
+/**
+ * @openapi
  * /reports/invoices:
  *   get:
  *     tags: [Отчеты]

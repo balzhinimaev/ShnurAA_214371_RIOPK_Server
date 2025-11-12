@@ -7,6 +7,9 @@ const get_top_debtors_use_case_1 = require("../../../../application/use-cases/re
 const list_invoices_use_case_1 = require("../../../../application/use-cases/reports/list-invoices.use-case");
 const apply_payment_use_case_1 = require("../../../../application/use-cases/reports/apply-payment.use-case");
 const get_customers_overdue_use_case_1 = require("../../../../application/use-cases/reports/get-customers-overdue.use-case");
+const get_abc_analysis_use_case_1 = require("../../../../application/use-cases/reports/get-abc-analysis.use-case");
+const get_risk_concentration_use_case_1 = require("../../../../application/use-cases/reports/get-risk-concentration.use-case");
+const get_contract_analysis_use_case_1 = require("../../../../application/use-cases/reports/get-contract-analysis.use-case");
 const customers_overdue_filters_dto_1 = require("../../../../application/dtos/reports/customers-overdue-filters.dto");
 class ReportController {
     async getDashboardSummary(_req, res, next) {
@@ -160,6 +163,68 @@ class ReportController {
                 offset,
                 sortBy,
                 sortOrder,
+            });
+            res.status(200).json(result);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    async getAbcAnalysis(req, res, next) {
+        try {
+            const getAbcAnalysisUseCase = tsyringe_1.container.resolve(get_abc_analysis_use_case_1.GetAbcAnalysisUseCase);
+            // Опциональный параметр даты расчета
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate)
+                : undefined;
+            const result = await getAbcAnalysisUseCase.execute({
+                asOfDate,
+            });
+            res.status(200).json(result);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    async getRiskConcentration(req, res, next) {
+        try {
+            const getRiskConcentrationUseCase = tsyringe_1.container.resolve(get_risk_concentration_use_case_1.GetRiskConcentrationUseCase);
+            // Опциональные параметры
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate)
+                : undefined;
+            const minPercentage = req.query.minPercentage
+                ? parseFloat(req.query.minPercentage)
+                : undefined;
+            const limit = req.query.limit
+                ? parseInt(req.query.limit)
+                : undefined;
+            const result = await getRiskConcentrationUseCase.execute({
+                asOfDate,
+                minPercentage,
+                limit,
+            });
+            res.status(200).json(result);
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    async getContractAnalysis(req, res, next) {
+        try {
+            const getContractAnalysisUseCase = tsyringe_1.container.resolve(get_contract_analysis_use_case_1.GetContractAnalysisUseCase);
+            // Опциональные параметры
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate)
+                : undefined;
+            const customerId = req.query.customerId;
+            const contractNumber = req.query.contractNumber;
+            const includePaid = req.query.includePaid === 'true';
+            const result = await getContractAnalysisUseCase.execute({
+                asOfDate,
+                customerId,
+                contractNumber,
+                includePaid,
             });
             res.status(200).json(result);
         }

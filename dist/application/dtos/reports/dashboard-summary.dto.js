@@ -120,6 +120,21 @@ __decorate([
  *           description: Структура дебиторской задолженности по срокам возникновения (старения).
  *           items:
  *             $ref: '#/components/schemas/AgingBucketDto' # Ссылка на схему корзины
+ *         averageReceivables:
+ *           type: number
+ *           format: float
+ *           description: Средняя дебиторская задолженность за период (текущий месяц). Рассчитывается как (ДЗ на начало периода + ДЗ на конец периода) / 2.
+ *           example: 250000.00
+ *         turnoverRatio:
+ *           type: number
+ *           format: float
+ *           description: Оборачиваемость дебиторской задолженности. Показывает, сколько раз за период ДЗ превратилась в денежные средства. Рассчитывается как выручка за период / средняя ДЗ.
+ *           example: 4.5
+ *         periodRevenue:
+ *           type: number
+ *           format: float
+ *           description: Выручка за период (текущий месяц). Сумма всех счетов, созданных в текущем месяце.
+ *           example: 1125000.00
  *       required:
  *         - totalReceivables
  *         - overdueReceivables
@@ -129,6 +144,9 @@ __decorate([
  *         - totalInvoicesCount
  *         - overdueInvoicesCount
  *         - agingStructure
+ *         - averageReceivables
+ *         - turnoverRatio
+ *         - periodRevenue
  */
 class DashboardSummaryDto {
     constructor() {
@@ -180,6 +198,24 @@ class DashboardSummaryDto {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "averageReceivables", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Средняя ДЗ за период
+        Object.defineProperty(this, "turnoverRatio", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Оборачиваемость ДЗ
+        Object.defineProperty(this, "periodRevenue", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Выручка за период
     }
 }
 exports.DashboardSummaryDto = DashboardSummaryDto;
@@ -216,4 +252,16 @@ __decorate([
     (0, class_transformer_1.Type)(() => AgingBucketDto),
     __metadata("design:type", Array)
 ], DashboardSummaryDto.prototype, "agingStructure", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "averageReceivables", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "turnoverRatio", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "periodRevenue", void 0);
 //# sourceMappingURL=dashboard-summary.dto.js.map

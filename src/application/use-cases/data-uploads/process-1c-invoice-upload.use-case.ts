@@ -265,6 +265,7 @@ export class Process1cInvoiceUploadUseCase {
             debtWorkStatus: debtWorkStatus,
             serviceType: validatedData.serviceType,
             manager: validatedData.manager,
+            contractNumber: validatedData.contractNumber,
             notes: validatedData.notes,
         };
 
@@ -291,6 +292,7 @@ export class Process1cInvoiceUploadUseCase {
         const actualPaymentDateStr = row.Дата_фактической_оплаты?.trim();
         const serviceTypeStr = row.Тип_услуги?.trim();
         const manager = row.Менеджер?.trim();
+        const contractNumber = row.Договор?.trim(); // Номер договора
         const notes = row.Примечание?.trim();
 
         // Проверка обязательных полей
@@ -374,6 +376,7 @@ export class Process1cInvoiceUploadUseCase {
             status: status,
             serviceType: serviceType,
             manager: manager,
+            contractNumber: contractNumber,
             notes: notes,
         };
     }

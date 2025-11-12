@@ -51,6 +51,7 @@ import { ApplyPaymentUseCase } from '../../application/use-cases/reports/apply-p
 import { GetCustomersOverdueUseCase } from '../../application/use-cases/reports/get-customers-overdue.use-case';
 import { GetAbcAnalysisUseCase } from '../../application/use-cases/reports/get-abc-analysis.use-case';
 import { GetRiskConcentrationUseCase } from '../../application/use-cases/reports/get-risk-concentration.use-case';
+import { GetContractAnalysisUseCase } from '../../application/use-cases/reports/get-contract-analysis.use-case';
 import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
 import { Process1cInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case';
 
@@ -127,6 +128,9 @@ container.register<GetRiskConcentrationUseCase>(
         useClass: GetRiskConcentrationUseCase,
     },
 );
+container.register<GetContractAnalysisUseCase>(GetContractAnalysisUseCase, {
+    useClass: GetContractAnalysisUseCase,
+});
 container.register<ProcessInvoiceUploadUseCase>(ProcessInvoiceUploadUseCase, {
     useClass: ProcessInvoiceUploadUseCase,
 });

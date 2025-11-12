@@ -1,10 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.InvoiceModel = void 0;
+exports.InvoiceModel = exports.InvoiceSchema = void 0;
 // src/infrastructure/database/mongoose/schemas/invoice.schema.ts
 const mongoose_1 = require("mongoose");
 // 3. Расширенная схема с новыми полями
-const InvoiceSchema = new mongoose_1.Schema({
+exports.InvoiceSchema = new mongoose_1.Schema({
     invoiceNumber: { type: String, required: true, index: true },
     customerId: {
         type: mongoose_1.Schema.Types.ObjectId,
@@ -59,6 +59,7 @@ const InvoiceSchema = new mongoose_1.Schema({
         index: true,
     },
     manager: { type: String, index: true },
+    contractNumber: { type: String, index: true }, // Номер договора
     // История работы с долгом
     lastContactDate: { type: Date },
     contactResult: { type: String },
@@ -91,8 +92,8 @@ const InvoiceSchema = new mongoose_1.Schema({
     },
 });
 // Составной индекс для быстрого поиска по клиенту и номеру счета
-InvoiceSchema.index({ customerId: 1, invoiceNumber: 1 }, { unique: true });
+exports.InvoiceSchema.index({ customerId: 1, invoiceNumber: 1 }, { unique: true });
 // Индекс для поиска по менеджеру и статусу долга
-InvoiceSchema.index({ manager: 1, debtWorkStatus: 1 });
-exports.InvoiceModel = (0, mongoose_1.model)('Invoice', InvoiceSchema);
+exports.InvoiceSchema.index({ manager: 1, debtWorkStatus: 1 });
+exports.InvoiceModel = (0, mongoose_1.model)('Invoice', exports.InvoiceSchema);
 //# sourceMappingURL=invoice.schema.js.map

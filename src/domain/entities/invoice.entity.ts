@@ -52,6 +52,7 @@ export class Invoice {
     // Специфика бизнеса
     public serviceType?: ServiceType; // Тип услуги
     public manager?: string; // Менеджер, ответственный за клиента
+    public contractNumber?: string; // Номер договора
     
     // История работы с долгом
     public lastContactDate?: Date; // Дата последнего контакта
@@ -79,6 +80,7 @@ export class Invoice {
         debtWorkStatus?: DebtWorkStatus;
         serviceType?: ServiceType;
         manager?: string;
+        contractNumber?: string;
         lastContactDate?: Date;
         contactResult?: string;
         notes?: string;
@@ -101,6 +103,7 @@ export class Invoice {
         this.debtWorkStatus = props.debtWorkStatus;
         this.serviceType = props.serviceType;
         this.manager = props.manager;
+        this.contractNumber = props.contractNumber;
         this.lastContactDate = props.lastContactDate;
         this.contactResult = props.contactResult;
         this.notes = props.notes;

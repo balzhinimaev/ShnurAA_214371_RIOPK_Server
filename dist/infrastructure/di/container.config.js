@@ -34,6 +34,10 @@ const get_dashboard_summary_use_case_1 = require("../../application/use-cases/re
 const get_top_debtors_use_case_1 = require("../../application/use-cases/reports/get-top-debtors.use-case");
 const list_invoices_use_case_1 = require("../../application/use-cases/reports/list-invoices.use-case");
 const apply_payment_use_case_1 = require("../../application/use-cases/reports/apply-payment.use-case");
+const get_customers_overdue_use_case_1 = require("../../application/use-cases/reports/get-customers-overdue.use-case");
+const get_abc_analysis_use_case_1 = require("../../application/use-cases/reports/get-abc-analysis.use-case");
+const get_risk_concentration_use_case_1 = require("../../application/use-cases/reports/get-risk-concentration.use-case");
+const get_contract_analysis_use_case_1 = require("../../application/use-cases/reports/get-contract-analysis.use-case");
 const process_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-invoice-upload.use-case");
 const process_1c_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case");
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
@@ -86,6 +90,18 @@ tsyringe_1.container.register(list_invoices_use_case_1.ListInvoicesUseCase, {
 });
 tsyringe_1.container.register(apply_payment_use_case_1.ApplyPaymentUseCase, {
     useClass: apply_payment_use_case_1.ApplyPaymentUseCase,
+});
+tsyringe_1.container.register(get_customers_overdue_use_case_1.GetCustomersOverdueUseCase, {
+    useClass: get_customers_overdue_use_case_1.GetCustomersOverdueUseCase,
+});
+tsyringe_1.container.register(get_abc_analysis_use_case_1.GetAbcAnalysisUseCase, {
+    useClass: get_abc_analysis_use_case_1.GetAbcAnalysisUseCase,
+});
+tsyringe_1.container.register(get_risk_concentration_use_case_1.GetRiskConcentrationUseCase, {
+    useClass: get_risk_concentration_use_case_1.GetRiskConcentrationUseCase,
+});
+tsyringe_1.container.register(get_contract_analysis_use_case_1.GetContractAnalysisUseCase, {
+    useClass: get_contract_analysis_use_case_1.GetContractAnalysisUseCase,
 });
 tsyringe_1.container.register(process_invoice_upload_use_case_1.ProcessInvoiceUploadUseCase, {
     useClass: process_invoice_upload_use_case_1.ProcessInvoiceUploadUseCase,

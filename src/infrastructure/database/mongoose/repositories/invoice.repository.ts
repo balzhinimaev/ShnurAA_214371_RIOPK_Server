@@ -10,6 +10,7 @@ import {
     Invoice,
     InvoiceStatus,
 } from '../../../../domain/entities/invoice.entity';
+import { Customer } from '../../../../domain/entities/customer.entity';
 import { InvoiceModel, IInvoiceDocument } from '../schemas/invoice.schema';
 import { AppError } from '../../../../application/errors/AppError'; // Для возможных ошибок
 import {
@@ -99,6 +100,11 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
     findAll(options: ListInvoicesOptions): Promise<ListInvoicesResult>;
     getTopDebtors(limit: number, asOfDate: Date): Promise<TopDebtorDto[]>;
     getAllCustomersWithDebt(asOfDate: Date): Promise<CustomerDebtDto[]>;
+    getInvoicesByContract(
+        asOfDate: Date,
+        customerId?: string,
+        contractNumber?: string,
+    ): Promise<Invoice[]>;
 }
 
 @injectable()
@@ -1732,6 +1738,101 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
             console.error('Error getting customers with overdue:', error);
             throw new AppError(
                 'Ошибка при получении клиентов с просрочкой',
+                500,
+            );
+        }
+    }
+
+    /**
+     * Получает все счета с задолженностью для анализа по договорам
+     * @param asOfDate - Дата расчета (используется для расчета просрочки в use case)
+     * @param customerId - Фильтр по контрагенту (опционально)
+     * @param contractNumber - Фильтр по номеру договора (опционально)
+     * @returns Массив счетов с информацией о клиентах
+     */
+    async getInvoicesByContract(
+        _asOfDate: Date = new Date(),
+        customerId?: string,
+        contractNumber?: string,
+    ): Promise<Invoice[]> {
+        try {
+            const matchStage: any = {
+                status: { $ne: 'PAID' }, // Только неоплаченные счета
+            };
+
+            // Фильтр по контрагенту
+            if (customerId) {
+                if (customerId.match(/^[0-9a-fA-F]{24}$/)) {
+                    matchStage.customerId = new Types.ObjectId(customerId);
+                }
+            }
+
+            // Фильтр по номеру договора
+            if (contractNumber) {
+                matchStage.contractNumber = contractNumber;
+            }
+
+            const pipeline: any[] = [
+                { $match: matchStage },
+                // Вычисляем остаток задолженности
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                // Фильтруем только те, у кого есть задолженность
+                { $match: { outstandingAmount: { $gt: 0 } } },
+                // Подтягиваем данные о клиенте
+                {
+                    $lookup: {
+                        from: 'customers',
+                        localField: 'customerId',
+                        foreignField: '_id',
+                        as: 'customerData',
+                    },
+                },
+                // Разворачиваем массив customer
+                {
+                    $unwind: {
+                        path: '$customerData',
+                        preserveNullAndEmptyArrays: true,
+                    },
+                },
+                // Сортируем по номеру договора и дате выставления
+                {
+                    $sort: {
+                        contractNumber: 1,
+                        issueDate: -1,
+                    },
+                },
+            ];
+
+            const docs = await InvoiceModel.aggregate(pipeline).exec();
+
+            // Преобразуем в доменные сущности
+            const invoices = docs.map((doc) => {
+                const invoice = this.mapToDomain(doc as Record<string, any>);
+                // Добавляем информацию о клиенте, если есть
+                if (doc.customerData) {
+                    invoice.customer = new Customer({
+                        id: doc.customerData._id.toString(),
+                        name: doc.customerData.name,
+                        unp: doc.customerData.unp,
+                        contactInfo: doc.customerData.contactInfo,
+                        createdAt: doc.customerData.createdAt,
+                        updatedAt: doc.customerData.updatedAt,
+                    });
+                }
+                return invoice;
+            });
+
+            return invoices;
+        } catch (error) {
+            console.error('Error getting invoices by contract:', error);
+            throw new AppError(
+                'Ошибка при получении счетов по договорам',
                 500,
             );
         }

@@ -11,6 +11,7 @@ exports.MongoInvoiceRepository = void 0;
 const tsyringe_1 = require("tsyringe");
 const mongoose_1 = require("mongoose");
 const invoice_entity_1 = require("../../../../domain/entities/invoice.entity");
+const customer_entity_1 = require("../../../../domain/entities/customer.entity");
 const invoice_schema_1 = require("../schemas/invoice.schema");
 const AppError_1 = require("../../../../application/errors/AppError"); // Для возможных ошибок
 let MongoInvoiceRepository = class MongoInvoiceRepository {
@@ -174,6 +175,128 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 throw new AppError_1.AppError(`Счет с номером ${data.invoiceNumber} для клиента ${data.customerId} уже существует (concurrency).`, 409);
             }
             throw new AppError_1.AppError('Ошибка при создании счета', 500);
+        }
+    }
+    /**
+     * Рассчитывает показатели оборачиваемости ДЗ за период (текущий месяц)
+     * Согласно требованиям: оборачиваемость = выручка за период / средняя ДЗ
+     * Средняя ДЗ = (ДЗ на начало периода + ДЗ на конец периода) / 2
+     *
+     * @param currentDate - Текущая дата расчета
+     * @returns Метрики оборачиваемости
+     */
+    async calculateTurnoverMetrics(currentDate) {
+        try {
+            // Определяем период: текущий месяц (с начала месяца до текущей даты)
+            const periodStart = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1); // Первый день текущего месяца
+            const periodEnd = currentDate;
+            // 1. Рассчитываем ДЗ на начало периода (начало месяца)
+            // ДЗ на начало = сумма всех неоплаченных остатков счетов, созданных до начала периода
+            const receivablesAtStartPipeline = [
+                {
+                    $match: {
+                        issueDate: { $lt: periodStart }, // Счета, созданные до начала периода
+                        status: { $ne: 'PAID' }, // Не полностью оплаченные
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                {
+                    $match: { outstandingAmount: { $gt: 0 } },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalReceivablesAtStart: {
+                            $sum: '$outstandingAmount',
+                        },
+                    },
+                },
+            ];
+            const receivablesAtStartResult = await invoice_schema_1.InvoiceModel.aggregate(receivablesAtStartPipeline).exec();
+            const receivablesAtStart = receivablesAtStartResult.length > 0
+                ? receivablesAtStartResult[0].totalReceivablesAtStart || 0
+                : 0;
+            // 2. Рассчитываем ДЗ на конец периода (текущая дата)
+            // Используем ту же логику, что и в getDashboardSummary
+            const receivablesAtEndPipeline = [
+                {
+                    $match: {
+                        status: { $ne: 'PAID' },
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                {
+                    $match: { outstandingAmount: { $gt: 0 } },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalReceivablesAtEnd: {
+                            $sum: '$outstandingAmount',
+                        },
+                    },
+                },
+            ];
+            const receivablesAtEndResult = await invoice_schema_1.InvoiceModel.aggregate(receivablesAtEndPipeline).exec();
+            const receivablesAtEnd = receivablesAtEndResult.length > 0
+                ? receivablesAtEndResult[0].totalReceivablesAtEnd || 0
+                : 0;
+            // 3. Рассчитываем среднюю ДЗ
+            const averageReceivables = (receivablesAtStart + receivablesAtEnd) / 2;
+            // 4. Рассчитываем выручку за период
+            // Выручка = сумма всех счетов (totalAmount), созданных в периоде
+            const revenuePipeline = [
+                {
+                    $match: {
+                        issueDate: {
+                            $gte: periodStart,
+                            $lte: periodEnd,
+                        },
+                    },
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: '$totalAmount' },
+                    },
+                },
+            ];
+            const revenueResult = await invoice_schema_1.InvoiceModel.aggregate(revenuePipeline).exec();
+            const periodRevenue = revenueResult.length > 0
+                ? revenueResult[0].totalRevenue || 0
+                : 0;
+            // 5. Рассчитываем оборачиваемость ДЗ
+            // Оборачиваемость = выручка за период / средняя ДЗ
+            // Если средняя ДЗ = 0, то оборачиваемость = 0 (избегаем деления на ноль)
+            const turnoverRatio = averageReceivables > 0
+                ? parseFloat((periodRevenue / averageReceivables).toFixed(2))
+                : 0;
+            return {
+                averageReceivables: parseFloat(averageReceivables.toFixed(2)),
+                turnoverRatio,
+                periodRevenue: parseFloat(periodRevenue.toFixed(2)),
+            };
+        }
+        catch (error) {
+            console.error('Error calculating turnover metrics:', error);
+            // В случае ошибки возвращаем нулевые значения
+            return {
+                averageReceivables: 0,
+                turnoverRatio: 0,
+                periodRevenue: 0,
+            };
         }
     }
     /**
@@ -398,6 +521,8 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                         100).toFixed(2))
                     : 0;
                 const averagePaymentDelayDays = parseFloat((summary.averageDaysOverdue || 0).toFixed(1));
+                // Рассчитываем показатели оборачиваемости ДЗ
+                const periodMetrics = await this.calculateTurnoverMetrics(currentDate);
                 const dashboardData = {
                     totalReceivables,
                     overdueReceivables,
@@ -407,6 +532,9 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     totalInvoicesCount: summary.totalInvoicesCount || 0,
                     overdueInvoicesCount: summary.overdueInvoicesCount || 0,
                     agingStructure: summary.agingStructure,
+                    averageReceivables: periodMetrics.averageReceivables,
+                    turnoverRatio: periodMetrics.turnoverRatio,
+                    periodRevenue: periodMetrics.periodRevenue,
                 };
                 return dashboardData;
             }
@@ -419,6 +547,8 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     '61-90',
                     '91+',
                 ];
+                // Рассчитываем показатели оборачиваемости даже если нет текущей ДЗ
+                const periodMetrics = await this.calculateTurnoverMetrics(currentDate);
                 return {
                     totalReceivables: 0,
                     overdueReceivables: 0,
@@ -432,6 +562,9 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                         amount: 0,
                         count: 0,
                     })),
+                    averageReceivables: periodMetrics.averageReceivables,
+                    turnoverRatio: periodMetrics.turnoverRatio,
+                    periodRevenue: periodMetrics.periodRevenue,
                 };
             }
         }
@@ -800,6 +933,96 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
         catch (error) {
             console.error('Error getting top debtors:', error);
             throw new AppError_1.AppError('Ошибка при получении топ должников', 500);
+        }
+    }
+    /**
+     * Получает всех контрагентов с задолженностью для ABC-анализа.
+     * Аналогично getTopDebtors, но без ограничения по количеству.
+     */
+    async getAllCustomersWithDebt(asOfDate = new Date()) {
+        try {
+            const pipeline = [
+                // Берем только неоплаченные счета
+                { $match: { status: { $ne: 'PAID' } } },
+                // Вычисляем остаток задолженности
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                        isOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: true,
+                                else: false,
+                            },
+                        },
+                        daysOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: {
+                                    $dateDiff: {
+                                        startDate: '$dueDate',
+                                        endDate: asOfDate,
+                                        unit: 'day',
+                                    },
+                                },
+                                else: 0,
+                            },
+                        },
+                    },
+                },
+                // Фильтруем только те, у кого есть задолженность
+                { $match: { outstandingAmount: { $gt: 0 } } },
+                // Группируем по клиенту
+                {
+                    $group: {
+                        _id: '$customerId',
+                        totalDebt: { $sum: '$outstandingAmount' },
+                        overdueDebt: {
+                            $sum: {
+                                $cond: ['$isOverdue', '$outstandingAmount', 0],
+                            },
+                        },
+                        invoiceCount: { $sum: 1 },
+                        oldestDebtDays: { $max: '$daysOverdue' },
+                    },
+                },
+                // Сортируем по общей задолженности (по убыванию)
+                { $sort: { totalDebt: -1 } },
+                // Подтягиваем данные о клиенте
+                {
+                    $lookup: {
+                        from: 'customers',
+                        localField: '_id',
+                        foreignField: '_id',
+                        as: 'customer',
+                    },
+                },
+                // Разворачиваем массив customer
+                { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+                // Формируем финальный объект
+                {
+                    $project: {
+                        _id: 0,
+                        customerId: { $toString: '$_id' },
+                        customerName: {
+                            $ifNull: ['$customer.name', 'Unknown Customer'],
+                        },
+                        customerUnp: '$customer.unp',
+                        totalDebt: { $round: ['$totalDebt', 2] },
+                        overdueDebt: { $round: ['$overdueDebt', 2] },
+                        invoiceCount: 1,
+                        oldestDebtDays: 1,
+                    },
+                },
+            ];
+            const result = await invoice_schema_1.InvoiceModel.aggregate(pipeline).exec();
+            return result;
+        }
+        catch (error) {
+            console.error('Error getting all customers with debt:', error);
+            throw new AppError_1.AppError('Ошибка при получении контрагентов с задолженностью', 500);
         }
     }
     /**
@@ -1176,6 +1399,88 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
         catch (error) {
             console.error('Error getting customers with overdue:', error);
             throw new AppError_1.AppError('Ошибка при получении клиентов с просрочкой', 500);
+        }
+    }
+    /**
+     * Получает все счета с задолженностью для анализа по договорам
+     * @param asOfDate - Дата расчета (используется для расчета просрочки в use case)
+     * @param customerId - Фильтр по контрагенту (опционально)
+     * @param contractNumber - Фильтр по номеру договора (опционально)
+     * @returns Массив счетов с информацией о клиентах
+     */
+    async getInvoicesByContract(_asOfDate = new Date(), customerId, contractNumber) {
+        try {
+            const matchStage = {
+                status: { $ne: 'PAID' }, // Только неоплаченные счета
+            };
+            // Фильтр по контрагенту
+            if (customerId) {
+                if (customerId.match(/^[0-9a-fA-F]{24}$/)) {
+                    matchStage.customerId = new mongoose_1.Types.ObjectId(customerId);
+                }
+            }
+            // Фильтр по номеру договора
+            if (contractNumber) {
+                matchStage.contractNumber = contractNumber;
+            }
+            const pipeline = [
+                { $match: matchStage },
+                // Вычисляем остаток задолженности
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                    },
+                },
+                // Фильтруем только те, у кого есть задолженность
+                { $match: { outstandingAmount: { $gt: 0 } } },
+                // Подтягиваем данные о клиенте
+                {
+                    $lookup: {
+                        from: 'customers',
+                        localField: 'customerId',
+                        foreignField: '_id',
+                        as: 'customerData',
+                    },
+                },
+                // Разворачиваем массив customer
+                {
+                    $unwind: {
+                        path: '$customerData',
+                        preserveNullAndEmptyArrays: true,
+                    },
+                },
+                // Сортируем по номеру договора и дате выставления
+                {
+                    $sort: {
+                        contractNumber: 1,
+                        issueDate: -1,
+                    },
+                },
+            ];
+            const docs = await invoice_schema_1.InvoiceModel.aggregate(pipeline).exec();
+            // Преобразуем в доменные сущности
+            const invoices = docs.map((doc) => {
+                const invoice = this.mapToDomain(doc);
+                // Добавляем информацию о клиенте, если есть
+                if (doc.customerData) {
+                    invoice.customer = new customer_entity_1.Customer({
+                        id: doc.customerData._id.toString(),
+                        name: doc.customerData.name,
+                        unp: doc.customerData.unp,
+                        contactInfo: doc.customerData.contactInfo,
+                        createdAt: doc.customerData.createdAt,
+                        updatedAt: doc.customerData.updatedAt,
+                    });
+                }
+                return invoice;
+            });
+            return invoices;
+        }
+        catch (error) {
+            console.error('Error getting invoices by contract:', error);
+            throw new AppError_1.AppError('Ошибка при получении счетов по договорам', 500);
         }
     }
 };
