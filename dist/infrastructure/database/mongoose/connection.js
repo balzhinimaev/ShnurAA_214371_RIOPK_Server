@@ -9,21 +9,33 @@ const config_1 = __importDefault(require("../../config")); // Наша конф�
 const connectDB = async () => {
     try {
         mongoose_1.default.set('strictQuery', true); // Рекомендуемая настройка для Mongoose 7+
+        console.log(`[DB] Attempting to connect to MongoDB...`);
+        console.log(`[DB] Database URL: ${config_1.default.db.url.replace(/\/\/.*@/, '//***:***@')}`); // Скрываем пароль в логах
+        console.log(`[DB] Database name: ${config_1.default.db.name}`);
         await mongoose_1.default.connect(config_1.default.db.url, {
             dbName: config_1.default.db.name
         }); // Используем URL из конфига
-        console.log('MongoDB Connected Successfully');
+        // Детальное логирование успешного подключения
+        const connection = mongoose_1.default.connection;
+        console.log('✅ [DB] MongoDB Connected Successfully');
+        console.log(`[DB] Connection state: ${connection.readyState === 1 ? 'connected' : connection.readyState}`);
+        console.log(`[DB] Database: ${connection.db?.databaseName || config_1.default.db.name}`);
+        console.log(`[DB] Host: ${connection.host || 'unknown'}`);
+        console.log(`[DB] Port: ${connection.port || 'unknown'}`);
         // Логирование событий подключения (опционально)
+        mongoose_1.default.connection.on('connected', () => {
+            console.log('✅ [DB] MongoDB connection established');
+        });
         mongoose_1.default.connection.on('error', (err) => {
-            console.error(`MongoDB connection error: ${err}`);
+            console.error(`❌ [DB] MongoDB connection error: ${err}`);
             process.exit(1); // Выход из приложения при ошибке подключения
         });
         mongoose_1.default.connection.on('disconnected', () => {
-            console.log('MongoDB disconnected.');
+            console.log('⚠️ [DB] MongoDB disconnected.');
         });
     }
     catch (error) {
-        console.error(`MongoDB connection error: ${error}`);
+        console.error(`❌ [DB] MongoDB connection error: ${error}`);
         process.exit(1); // Выход из приложения при ошибке подключения
     }
 };
