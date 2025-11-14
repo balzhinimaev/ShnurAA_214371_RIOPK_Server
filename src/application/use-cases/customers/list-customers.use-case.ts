@@ -5,6 +5,10 @@ import {
     CustomerRepositoryToken,
     FindAllCustomersOptions, // Используем обновленный тип
 } from '../../../domain/repositories/ICustomerRepository';
+import {
+    IDebtWorkRecordRepository,
+    DebtWorkRecordRepositoryToken,
+} from '../../../domain/repositories/IDebtWorkRecordRepository';
 import { CustomerResponseDto } from '../../dtos/customers/customer-response.dto';
 import { ListCustomersResponseDto } from '../../dtos/customers/list-customers-response.dto';
 import { plainToInstance } from 'class-transformer';
@@ -15,6 +19,8 @@ export class ListCustomersUseCase {
     constructor(
         @inject(CustomerRepositoryToken)
         private customerRepository: ICustomerRepository,
+        @inject(DebtWorkRecordRepositoryToken)
+        private debtWorkRecordRepository: IDebtWorkRecordRepository,
     ) {}
 
     /**
@@ -34,9 +40,25 @@ export class ListCustomersUseCase {
             const { customers, total } =
                 await this.customerRepository.findAll(options);
 
-            const customerDtos = customers.map((customer) =>
-                plainToInstance(CustomerResponseDto, customer, {
-                    excludeExtraneousValues: true,
+            // Получаем рисковость для каждого клиента
+            const customerDtos = await Promise.all(
+                customers.map(async (customer) => {
+                    try {
+                        const stats = await this.debtWorkRecordRepository.getCustomerStats(customer.id);
+                        return plainToInstance(CustomerResponseDto, {
+                            ...customer,
+                            riskScore: stats.riskScore,
+                            riskLevel: stats.riskLevel,
+                        }, {
+                            excludeExtraneousValues: true,
+                        });
+                    } catch (error) {
+                        // Если не удалось получить статистику, возвращаем клиента без рисковости
+                        console.warn(`Failed to get risk stats for customer ${customer.id}:`, error);
+                        return plainToInstance(CustomerResponseDto, customer, {
+                            excludeExtraneousValues: true,
+                        });
+                    }
                 }),
             );
 

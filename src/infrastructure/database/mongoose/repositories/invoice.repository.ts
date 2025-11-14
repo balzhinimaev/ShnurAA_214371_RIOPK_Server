@@ -17,6 +17,7 @@ import {
     GetCustomersOverdueOptions,
     GetCustomersOverdueResult,
     CustomerOverdueDto,
+    AgingBucket as AgingBucketEnum,
 } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
 
 // Интерфейсы для фильтрации и пагинации
@@ -86,6 +87,7 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
             | 'getDaysOverdue'
             | 'calculateDebtWorkStatus'
             | 'applyPayment'
+            | 'toJSON'
         >,
     ): Promise<Invoice>;
     findByInvoiceNumberAndCustomerId(
@@ -117,14 +119,55 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
     private mapToDomain(
         doc: IInvoiceDocument | Record<string, any>,
     ): Invoice {
-        const obj =
-            doc && typeof (doc as IInvoiceDocument).toObject === 'function'
-                ? (doc as IInvoiceDocument).toObject()
-                : this.normalizeAggregateResult(doc);
+        // Если doc уже простой объект (из lean()), используем его напрямую
+        // Иначе используем toObject() или normalizeAggregateResult для агрегаций
+        let obj: Record<string, any>;
+        if (doc && typeof (doc as IInvoiceDocument).toObject === 'function') {
+            obj = (doc as IInvoiceDocument).toObject({ virtuals: true });
+        } else if (doc && typeof doc === 'object') {
+            obj = doc as Record<string, any>;
+        } else {
+            obj = this.normalizeAggregateResult(doc);
+        }
+        
+        // Обработка populate для customerId
+        let customer: Customer | undefined = undefined;
+        let customerId: string;
+        
+        // Проверяем, был ли customerId populate
+        // После lean() + populate customerId будет объектом с данными клиента
+        if (obj.customerId && typeof obj.customerId === 'object') {
+            const customerObj = obj.customerId as any;
+            
+            // Проверяем, что это не просто ObjectId, а объект с данными (есть name или _id)
+            if (customerObj.name || customerObj._id) {
+                // Это populate данные
+                customerId = customerObj._id?.toString() || customerObj.id?.toString() || '';
+                
+                if (customerObj.name) {
+                    customer = new Customer({
+                        id: customerId,
+                        name: customerObj.name || '',
+                        unp: customerObj.unp || undefined,
+                        contactInfo: customerObj.contactInfo || undefined,
+                        createdAt: customerObj.createdAt ? new Date(customerObj.createdAt) : new Date(),
+                        updatedAt: customerObj.updatedAt ? new Date(customerObj.updatedAt) : new Date(),
+                    });
+                }
+            } else {
+                // Это просто ObjectId
+                customerId = customerObj.toString();
+            }
+        } else {
+            // customerId это просто строка
+            customerId = obj.customerId?.toString() || '';
+        }
+        
         return new Invoice({
-            id: obj.id,
+            id: obj._id?.toString() || obj.id?.toString() || '',
             invoiceNumber: obj.invoiceNumber,
-            customerId: obj.customerId, // customerId будет строкой после toObject
+            customerId: customerId,
+            customer: customer, // Добавляем populate данные
             issueDate: obj.issueDate,
             dueDate: obj.dueDate,
             serviceStartDate: obj.serviceStartDate,
@@ -137,6 +180,7 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
             debtWorkStatus: obj.debtWorkStatus,
             serviceType: obj.serviceType,
             manager: obj.manager,
+            contractNumber: obj.contractNumber, // Добавляем contractNumber
             lastContactDate: obj.lastContactDate,
             contactResult: obj.contactResult,
             notes: obj.notes,
@@ -303,12 +347,43 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 customerId: customerObjectId, // Сохраняем как ObjectId
                 issueDate: data.issueDate,
                 dueDate: data.dueDate,
+                serviceStartDate: data.serviceStartDate,
+                serviceEndDate: data.serviceEndDate,
                 totalAmount: data.totalAmount,
                 paidAmount: data.paidAmount ?? 0,
                 paymentTermDays: data.paymentTermDays ?? 30, // Default to 30 days if not provided
+                actualPaymentDate: data.actualPaymentDate,
                 status: data.status ?? 'OPEN', // Статус по умолчанию OPEN
+                debtWorkStatus: data.debtWorkStatus,
+                serviceType: data.serviceType,
+                manager: data.manager,
+                contractNumber: data.contractNumber,
+                notes: data.notes,
             });
             const savedDoc = await newInvoiceDoc.save();
+
+            // Если счет создается с уже имеющейся оплатой, создаем запись в истории платежей
+            if (data.paidAmount && data.paidAmount > 0 && data.actualPaymentDate) {
+                const { PaymentHistoryModel } = await import(
+                    '../schemas/payment-history.schema'
+                );
+
+                const isOnTime = data.actualPaymentDate <= data.dueDate;
+                let daysDelay = 0;
+                if (!isOnTime) {
+                    const diffTime = data.actualPaymentDate.getTime() - data.dueDate.getTime();
+                    daysDelay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+
+                await PaymentHistoryModel.create({
+                    invoiceId: savedDoc._id,
+                    amount: data.paidAmount,
+                    paymentDate: data.actualPaymentDate,
+                    isOnTime: isOnTime,
+                    daysDelay: daysDelay,
+                });
+            }
+
             return this.mapToDomain(savedDoc);
         } catch (error: any) {
             // Обработка ошибок MongoDB (например, нарушение уникальности составного индекса, если он есть)
@@ -328,6 +403,101 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 );
             }
             throw new AppError('Ошибка при создании счета', 500);
+        }
+    }
+
+    /**
+     * Рассчитывает показатели на основе истории платежей
+     * @returns Метрики платежей: средний срок оплаты, сумма платежей в срок, процент просроченных платежей
+     */
+    private async calculatePaymentMetrics(): Promise<{
+        averagePaymentDays: number;
+        onTimePaymentsAmount: number;
+        overduePaymentsPercentage: number;
+    }> {
+        try {
+            const { PaymentHistoryModel } = await import(
+                '../schemas/payment-history.schema'
+            );
+
+            // Получаем все платежи с информацией о счетах
+            const payments = await PaymentHistoryModel.aggregate([
+                {
+                    $lookup: {
+                        from: 'invoices',
+                        localField: 'invoiceId',
+                        foreignField: '_id',
+                        as: 'invoice',
+                    },
+                },
+                {
+                    $unwind: '$invoice',
+                },
+                {
+                    $addFields: {
+                        // Вычисляем количество дней от выставления счета до оплаты
+                        paymentDays: {
+                            $dateDiff: {
+                                startDate: '$invoice.issueDate',
+                                endDate: '$paymentDate',
+                                unit: 'day',
+                            },
+                        },
+                    },
+                },
+            ]).exec();
+
+            if (payments.length === 0) {
+                return {
+                    averagePaymentDays: 0,
+                    onTimePaymentsAmount: 0,
+                    overduePaymentsPercentage: 0,
+                };
+            }
+
+            // Средний срок оплаты (от выставления до оплаты)
+            const totalPaymentDays = payments.reduce(
+                (sum, p) => sum + (p.paymentDays || 0),
+                0,
+            );
+            const averagePaymentDays =
+                totalPaymentDays / payments.length;
+
+            // Сумма платежей в срок
+            const onTimePaymentsAmount = payments
+                .filter((p) => p.isOnTime)
+                .reduce((sum, p) => sum + p.amount, 0);
+
+            // Общая сумма всех платежей
+            const totalPaymentsAmount = payments.reduce(
+                (sum, p) => sum + p.amount,
+                0,
+            );
+
+            // Процент просроченных платежей
+            const overduePaymentsAmount = totalPaymentsAmount - onTimePaymentsAmount;
+            const overduePaymentsPercentage =
+                totalPaymentsAmount > 0
+                    ? parseFloat(
+                          (
+                              (overduePaymentsAmount / totalPaymentsAmount) *
+                              100
+                          ).toFixed(2),
+                      )
+                    : 0;
+
+            return {
+                averagePaymentDays: parseFloat(averagePaymentDays.toFixed(1)),
+                onTimePaymentsAmount: parseFloat(onTimePaymentsAmount.toFixed(2)),
+                overduePaymentsPercentage: overduePaymentsPercentage,
+            };
+        } catch (error) {
+            console.error('Error calculating payment metrics:', error);
+            return {
+                averagePaymentDays: 0,
+                onTimePaymentsAmount: 0,
+                overduePaymentsPercentage: 0,
+            };
         }
     }
 
@@ -737,6 +907,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     currentDate,
                 );
 
+                // Рассчитываем показатели на основе истории платежей
+                const paymentMetrics = await this.calculatePaymentMetrics();
+
                 const dashboardData: DashboardSummaryData = {
                     totalReceivables,
                     overdueReceivables,
@@ -749,6 +922,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     averageReceivables: periodMetrics.averageReceivables,
                     turnoverRatio: periodMetrics.turnoverRatio,
                     periodRevenue: periodMetrics.periodRevenue,
+                    averagePaymentDays: paymentMetrics.averagePaymentDays,
+                    onTimePaymentsAmount: paymentMetrics.onTimePaymentsAmount,
+                    overduePaymentsPercentage: paymentMetrics.overduePaymentsPercentage,
                 };
 
                 return dashboardData;
@@ -767,6 +943,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     currentDate,
                 );
                 
+                // Рассчитываем показатели на основе истории платежей
+                const paymentMetrics = await this.calculatePaymentMetrics();
+                
                 return {
                     totalReceivables: 0,
                     overdueReceivables: 0,
@@ -783,6 +962,9 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     averageReceivables: periodMetrics.averageReceivables,
                     turnoverRatio: periodMetrics.turnoverRatio,
                     periodRevenue: periodMetrics.periodRevenue,
+                    averagePaymentDays: paymentMetrics.averagePaymentDays,
+                    onTimePaymentsAmount: paymentMetrics.onTimePaymentsAmount,
+                    overduePaymentsPercentage: paymentMetrics.overduePaymentsPercentage,
                 };
             }
         } catch (error) {
@@ -1059,9 +1241,22 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                     .skip(offset)
                     .limit(limit)
                     .populate('customerId', 'name unp contactInfo')
+                    .lean() // Используем lean() для получения простых объектов
                     .exec(),
                 InvoiceModel.countDocuments(query).exec(),
             ]);
+
+            // Логирование для отладки populate
+            if (docs.length > 0) {
+                const firstDoc = docs[0] as any;
+                console.log('=== POPULATE DEBUG ===');
+                console.log('customerId type:', typeof firstDoc.customerId);
+                console.log('customerId value:', firstDoc.customerId);
+                console.log('Is object:', typeof firstDoc.customerId === 'object');
+                console.log('Has name:', firstDoc.customerId?.name);
+                console.log('Full customerId:', JSON.stringify(firstDoc.customerId, null, 2));
+                console.log('====================');
+            }
 
             const invoices = docs.map((doc) => this.mapToDomain(doc));
 
@@ -1096,6 +1291,35 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
         try {
             const doc = await InvoiceModel.findById(id).exec();
             if (!doc) return null;
+
+            const oldPaidAmount = doc.paidAmount;
+            const paymentDifference = paidAmount - oldPaidAmount;
+
+            // Если сумма оплаты увеличилась, создаем запись в истории платежей
+            if (paymentDifference > 0 && actualPaymentDate) {
+                const { PaymentHistoryModel } = await import(
+                    '../schemas/payment-history.schema'
+                );
+
+                // Определяем, был ли платеж в срок
+                const isOnTime = actualPaymentDate <= doc.dueDate;
+                
+                // Вычисляем задержку в днях (если просрочен)
+                let daysDelay = 0;
+                if (!isOnTime) {
+                    const diffTime = actualPaymentDate.getTime() - doc.dueDate.getTime();
+                    daysDelay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+
+                // Создаем запись в истории платежей
+                await PaymentHistoryModel.create({
+                    invoiceId: doc._id,
+                    amount: paymentDifference, // Сохраняем только разницу (новый платеж)
+                    paymentDate: actualPaymentDate,
+                    isOnTime: isOnTime,
+                    daysDelay: daysDelay,
+                });
+            }
 
             // Обновляем суммы и даты
             doc.paidAmount = paidAmount;
@@ -1347,6 +1571,16 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 sortOrder = 'desc',
             } = options;
 
+            console.log('[getCustomersWithOverdue] === START ===');
+            console.log('[getCustomersWithOverdue] Input parameters:', {
+                filters: JSON.stringify(filters),
+                limit,
+                offset,
+                sortBy,
+                sortOrder,
+                asOfDate: asOfDate.toISOString(),
+            });
+
             const pipeline: any[] = [
                 // Берем только неоплаченные счета
                 { $match: { status: { $ne: 'PAID' } } },
@@ -1444,20 +1678,20 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 matchFilters.daysOverdue.$lte = filters.maxDaysOverdue;
             }
 
-            // Фильтр по aging bucket (если не указаны minDaysOverdue/maxDaysOverdue)
-            if (
-                filters.agingBucket &&
-                !filters.minDaysOverdue &&
-                !filters.maxDaysOverdue
-            ) {
-                matchFilters.agingBucket = filters.agingBucket;
-            }
-
-            // Исключаем CURRENT, если не указано includeCurrent
-            if (!filters.includeCurrent) {
+            // Исключаем CURRENT на уровне счетов, если не указано includeCurrent И не запрашивается CURRENT bucket
+            // Если явно запрашивается CURRENT bucket, автоматически включаем его
+            // Примечание: фильтр по agingBucket для клиентов будет применен ПОСЛЕ группировки
+            if (!filters.includeCurrent && filters.agingBucket !== AgingBucketEnum.CURRENT) {
                 matchFilters.daysOverdue = matchFilters.daysOverdue || {};
                 matchFilters.daysOverdue.$gt = 0;
             }
+
+            console.log('[getCustomersWithOverdue] Invoice-level filters:', {
+                includeCurrent: filters.includeCurrent,
+                agingBucket: filters.agingBucket,
+                matchFilters: JSON.stringify(matchFilters),
+                willExcludeCurrent: !filters.includeCurrent && filters.agingBucket !== AgingBucketEnum.CURRENT,
+            });
 
             if (Object.keys(matchFilters).length > 0) {
                 pipeline.push({ $match: matchFilters });
@@ -1544,13 +1778,36 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
             }
 
             // Определяем aging bucket клиента по самой старой просрочке
+            // CURRENT: клиенты без просрочки (oldestDebtDays <= 0 или overdueDebt = 0)
+            console.log('[getCustomersWithOverdue] Computing customer agingBucket based on oldestDebtDays and overdueDebt');
+            
+            // Добавляем временное поле для отладки перед вычислением agingBucket
+            pipeline.push({
+                $addFields: {
+                    _debugBeforeAgingBucket: {
+                        oldestDebtDays: '$oldestDebtDays',
+                        overdueDebt: '$overdueDebt',
+                        totalDebt: '$totalDebt',
+                        currentDebt: '$currentDebt',
+                        overdueInvoiceCount: '$overdueInvoiceCount',
+                        invoiceCount: '$invoiceCount',
+                    },
+                },
+            });
+
             pipeline.push({
                 $addFields: {
                     agingBucket: {
                         $switch: {
                             branches: [
                                 {
-                                    case: { $eq: ['$oldestDebtDays', 0] },
+                                    // CURRENT: нет просрочки (oldestDebtDays <= 0 или overdueDebt = 0)
+                                    case: {
+                                        $or: [
+                                            { $lte: ['$oldestDebtDays', 0] },
+                                            { $eq: ['$overdueDebt', 0] },
+                                        ],
+                                    },
                                     then: 'CURRENT',
                                 },
                                 {
@@ -1591,6 +1848,99 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 },
             });
 
+            // Временный pipeline для отладки - получаем данные после вычисления agingBucket, но до фильтрации
+            const debugPipelineBeforeFilter = [...pipeline];
+            debugPipelineBeforeFilter.push({
+                $project: {
+                    _id: 1,
+                    customerId: { $toString: '$_id' },
+                    oldestDebtDays: 1,
+                    overdueDebt: 1,
+                    totalDebt: 1,
+                    currentDebt: 1,
+                    agingBucket: 1,
+                    overdueInvoiceCount: 1,
+                    invoiceCount: 1,
+                    _debugBeforeAgingBucket: 1,
+                },
+            });
+            
+            const debugResult = await InvoiceModel.aggregate(debugPipelineBeforeFilter).exec();
+            console.log('[getCustomersWithOverdue] Customers after agingBucket computation (before filter):', {
+                count: debugResult.length,
+                customers: debugResult.slice(0, 5).map((c: any) => ({
+                    customerId: c.customerId,
+                    oldestDebtDays: c.oldestDebtDays,
+                    overdueDebt: c.overdueDebt,
+                    totalDebt: c.totalDebt,
+                    currentDebt: c.currentDebt,
+                    agingBucket: c.agingBucket,
+                    overdueInvoiceCount: c.overdueInvoiceCount,
+                    invoiceCount: c.invoiceCount,
+                    debug: c._debugBeforeAgingBucket,
+                })),
+            });
+
+            // Фильтр по aging bucket для клиентов (применяется ПОСЛЕ вычисления agingBucket клиента)
+            // Если не указаны minDaysOverdue/maxDaysOverdue
+            if (
+                filters.agingBucket &&
+                !filters.minDaysOverdue &&
+                !filters.maxDaysOverdue
+            ) {
+                console.log('[getCustomersWithOverdue] Applying customer-level agingBucket filter:', {
+                    agingBucket: filters.agingBucket,
+                    agingBucketType: typeof filters.agingBucket,
+                    agingBucketValue: String(filters.agingBucket),
+                });
+                
+                // Для CURRENT bucket фильтруем клиентов, у которых есть не просроченные счета (currentDebt > 0)
+                if (filters.agingBucket === AgingBucketEnum.CURRENT) {
+                    console.log('[getCustomersWithOverdue] Using CURRENT bucket filter: currentDebt > 0');
+                    pipeline.push({
+                        $match: { 
+                            currentDebt: { $gt: 0 }
+                        },
+                    });
+                } else {
+                    // Для остальных bucket фильтруем по наличию задолженности в соответствующем диапазоне
+                    // Это позволяет показывать клиентов, у которых есть счета в нужном диапазоне,
+                    // даже если у них есть более старые просрочки
+                    const filterValue = String(filters.agingBucket);
+                    console.log('[getCustomersWithOverdue] Using agingBucket filter by breakdown:', filterValue);
+                    
+                    let breakdownField: string;
+                    if (filterValue === '1_30') {
+                        breakdownField = 'days_1_30';
+                    } else if (filterValue === '31_60') {
+                        breakdownField = 'days_31_60';
+                    } else if (filterValue === '61_90') {
+                        breakdownField = 'days_61_90';
+                    } else if (filterValue === '91_PLUS') {
+                        breakdownField = 'days_91_plus';
+                    } else {
+                        // Fallback на стандартный фильтр
+                        breakdownField = '';
+                    }
+                    
+                    if (breakdownField) {
+                        pipeline.push({
+                            $match: { [breakdownField]: { $gt: 0 } },
+                        });
+                    } else {
+                        pipeline.push({
+                            $match: { agingBucket: filterValue },
+                        });
+                    }
+                }
+            } else {
+                console.log('[getCustomersWithOverdue] Skipping customer-level agingBucket filter:', {
+                    hasAgingBucket: !!filters.agingBucket,
+                    hasMinDaysOverdue: !!filters.minDaysOverdue,
+                    hasMaxDaysOverdue: !!filters.maxDaysOverdue,
+                });
+            }
+
             // Подтягиваем данные о клиенте
             pipeline.push(
                 {
@@ -1615,6 +1965,8 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 countPipeline,
             ).exec();
             const total = countResult.length > 0 ? countResult[0].total : 0;
+
+            console.log('[getCustomersWithOverdue] Total customers before pagination:', total);
 
             // Определяем поле для сортировки
             let sortField = 'overdueDebt';
@@ -1660,7 +2012,19 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 pipeline,
             ).exec()) as CustomerOverdueDto[];
 
-            // Вычисляем summary
+            console.log('[getCustomersWithOverdue] Found customers:', {
+                count: customers.length,
+                sample: customers.slice(0, 3).map((c) => ({
+                    customerId: c.customerId,
+                    customerName: c.customerName,
+                    agingBucket: c.agingBucket,
+                    overdueDebt: c.overdueDebt,
+                    oldestDebtDays: c.oldestDebtDays,
+                })),
+            });
+
+            // Вычисляем summary с учетом фильтров по agingBucket
+            // Summary должен показывать статистику только по счетам/клиентам, соответствующим выбранному bucket
             const summaryPipeline: any[] = [
                 { $match: { status: { $ne: 'PAID' } } },
                 {
@@ -1690,21 +2054,152 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                         },
                     },
                 },
-                { $match: { outstandingAmount: { $gt: 0 }, isOverdue: true } },
-                {
-                    $group: {
-                        _id: null,
-                        totalOverdueAmount: { $sum: '$outstandingAmount' },
-                        totalDaysOverdue: { $sum: '$daysOverdue' },
-                        count: { $sum: 1 },
-                        uniqueCustomers: { $addToSet: '$customerId' },
+                { $match: { outstandingAmount: { $gt: 0 } } },
+            ];
+
+            // Применяем фильтры по agingBucket для summary
+            if (filters.agingBucket) {
+                if (filters.agingBucket === AgingBucketEnum.CURRENT) {
+                    // CURRENT: только не просроченные счета
+                    summaryPipeline.push({
+                        $match: { isOverdue: false },
+                    });
+                } else if (filters.agingBucket === AgingBucketEnum.DAYS_1_30) {
+                    // 1_30: просрочка от 1 до 30 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 1, $lte: 30 },
+                        },
+                    });
+                } else if (filters.agingBucket === AgingBucketEnum.DAYS_31_60) {
+                    // 31_60: просрочка от 31 до 60 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 31, $lte: 60 },
+                        },
+                    });
+                } else if (filters.agingBucket === AgingBucketEnum.DAYS_61_90) {
+                    // 61_90: просрочка от 61 до 90 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 61, $lte: 90 },
+                        },
+                    });
+                } else if (filters.agingBucket === AgingBucketEnum.DAYS_91_PLUS) {
+                    // 91_PLUS: просрочка 91+ дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 91 },
+                        },
+                    });
+                }
+            } else if (!filters.includeCurrent) {
+                // Если не указан bucket и не включен CURRENT, показываем только просроченные
+                summaryPipeline.push({
+                    $match: { isOverdue: true },
+                });
+            }
+
+            // Группируем по клиентам для определения agingBucket клиента
+            summaryPipeline.push({
+                $group: {
+                    _id: '$customerId',
+                    totalAmount: { $sum: '$outstandingAmount' },
+                    maxDaysOverdue: { $max: '$daysOverdue' },
+                    hasOverdue: { $max: { $cond: ['$isOverdue', 1, 0] } },
+                },
+            });
+
+            // Определяем agingBucket клиента (та же логика, что и в основном pipeline)
+            summaryPipeline.push({
+                $addFields: {
+                    customerAgingBucket: {
+                        $switch: {
+                            branches: [
+                                {
+                                    case: {
+                                        $or: [
+                                            { $lte: ['$maxDaysOverdue', 0] },
+                                            { $eq: ['$hasOverdue', 0] },
+                                        ],
+                                    },
+                                    then: 'CURRENT',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 1] },
+                                            { $lte: ['$maxDaysOverdue', 30] },
+                                        ],
+                                    },
+                                    then: '1_30',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 31] },
+                                            { $lte: ['$maxDaysOverdue', 60] },
+                                        ],
+                                    },
+                                    then: '31_60',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 61] },
+                                            { $lte: ['$maxDaysOverdue', 90] },
+                                        ],
+                                    },
+                                    then: '61_90',
+                                },
+                                {
+                                    case: { $gte: ['$maxDaysOverdue', 91] },
+                                    then: '91_PLUS',
+                                },
+                            ],
+                            default: 'CURRENT',
+                        },
                     },
                 },
-            ];
+            });
+
+            // Для CURRENT bucket фильтруем по currentDebt клиента, для остальных - по agingBucket клиента
+            if (filters.agingBucket === AgingBucketEnum.CURRENT) {
+                // Для CURRENT: берем всех клиентов с не просроченными счетами
+                // (уже отфильтровано выше по isOverdue: false)
+            } else if (filters.agingBucket) {
+                // Для остальных bucket: фильтруем клиентов по их agingBucket
+                const bucketFilterValue = String(filters.agingBucket);
+                console.log('[getCustomersWithOverdue] Summary: filtering customers by customerAgingBucket:', bucketFilterValue);
+                summaryPipeline.push({
+                    $match: { customerAgingBucket: bucketFilterValue },
+                });
+            }
+
+            // Финальная группировка для summary
+            summaryPipeline.push({
+                $group: {
+                    _id: null,
+                    totalOverdueAmount: { $sum: '$totalAmount' },
+                    totalDaysOverdue: { $sum: '$maxDaysOverdue' },
+                    count: { $sum: 1 },
+                    uniqueCustomers: { $addToSet: '$_id' },
+                },
+            });
 
             const summaryResult = await InvoiceModel.aggregate(
                 summaryPipeline,
             ).exec();
+
+            console.log('[getCustomersWithOverdue] Summary pipeline result:', {
+                resultCount: summaryResult.length,
+                rawResult: summaryResult[0] || null,
+                isCurrentBucket: filters.agingBucket === AgingBucketEnum.CURRENT,
+            });
 
             const summary =
                 summaryResult.length > 0
@@ -1726,6 +2221,15 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                           totalCustomers: 0,
                           averageDaysOverdue: 0,
                       };
+
+            console.log('[getCustomersWithOverdue] Final result:', {
+                customersCount: customers.length,
+                total,
+                limit,
+                offset,
+                summary,
+            });
+            console.log('[getCustomersWithOverdue] === END ===');
 
             return {
                 customers,

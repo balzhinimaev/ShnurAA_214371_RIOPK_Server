@@ -24,6 +24,10 @@ import {
     IInvoiceRepository,
     InvoiceRepositoryToken,
 } from '../../domain/repositories/IInvoiceRepository';
+import {
+    IDebtWorkRecordRepository,
+    DebtWorkRecordRepositoryToken,
+} from '../../domain/repositories/IDebtWorkRecordRepository';
 
 // import { ListUsersUseCase } from '../../application/use-cases/users/list-users.use-case';
 // import { GetUserByIdUseCase } from '../../application/use-cases/users/get-user-by-id.use-case';
@@ -37,6 +41,7 @@ import { MongooseConnectionToken } from '../database/mongoose/repositories/user.
 import { MongoUserRepository } from '../database/mongoose/repositories/user.repository';
 import { MongoCustomerRepository } from '../database/mongoose/repositories/customer.repository';
 import { MongoInvoiceRepository } from '../database/mongoose/repositories/invoice.repository';
+import { MongoDebtWorkRecordRepository } from '../database/mongoose/repositories/debt-work-record.repository';
 // Сервисы
 import { BcryptPasswordHasher } from '../services/bcrypt.password-hasher';
 import { JsonWebTokenService } from '../services/jsonwebtoken.service';
@@ -54,6 +59,8 @@ import { GetRiskConcentrationUseCase } from '../../application/use-cases/reports
 import { GetContractAnalysisUseCase } from '../../application/use-cases/reports/get-contract-analysis.use-case';
 import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-invoice-upload.use-case';
 import { Process1cInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case';
+import { CreateDebtWorkRecordUseCase } from '../../application/use-cases/customers/create-debt-work-record.use-case';
+import { GetDebtWorkHistoryUseCase } from '../../application/use-cases/customers/get-debt-work-history.use-case';
 
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 
@@ -92,6 +99,10 @@ container.register<ICustomerRepository>(CustomerRepositoryToken, {
 // TODO: Адаптируйте MongoInvoiceRepository, чтобы он принимал Connection через DI
 container.register<IInvoiceRepository>(InvoiceRepositoryToken, {
     useClass: MongoInvoiceRepository,
+});
+
+container.register<IDebtWorkRecordRepository>(DebtWorkRecordRepositoryToken, {
+    useClass: MongoDebtWorkRecordRepository,
 });
 
 // 3. Регистрация Use Cases
@@ -140,6 +151,12 @@ container.register<Process1cInvoiceUploadUseCase>(
         useClass: Process1cInvoiceUploadUseCase,
     },
 );
+container.register<CreateDebtWorkRecordUseCase>(CreateDebtWorkRecordUseCase, {
+    useClass: CreateDebtWorkRecordUseCase,
+});
+container.register<GetDebtWorkHistoryUseCase>(GetDebtWorkHistoryUseCase, {
+    useClass: GetDebtWorkHistoryUseCase,
+});
 
 // --- Регистрация Controllers ---
 // Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.

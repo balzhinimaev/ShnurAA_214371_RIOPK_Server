@@ -13,6 +13,11 @@ export const authMiddleware = async (
     _res: Response,
     next: NextFunction,
 ): Promise<void> => {
+    // Пропускаем OPTIONS запросы (CORS preflight) без аутентификации
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {

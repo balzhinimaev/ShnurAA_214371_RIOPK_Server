@@ -1,5 +1,6 @@
 // src/application/dtos/customers/customer-response.dto.ts
 import { Expose } from 'class-transformer';
+import { RiskLevel } from '../../../domain/enums/risk-level.enum';
 
 /**
  * @openapi
@@ -37,6 +38,17 @@ import { Expose } from 'class-transformer';
  *           format: date-time
  *           description: Дата и время последнего обновления записи клиента.
  *           example: "2024-01-15T14:30:00.000Z"
+ *         riskScore:
+ *           type: number
+ *           nullable: true
+ *           description: Оценка рисковости клиента (0-100). Рассчитывается на основе истории работы с задолженностью.
+ *           example: 45
+ *         riskLevel:
+ *           type: string
+ *           nullable: true
+ *           enum: [LOW, MEDIUM, HIGH, CRITICAL]
+ *           description: Уровень риска клиента на основе riskScore.
+ *           example: "MEDIUM"
  *       required:
  *         - id
  *         - name
@@ -83,6 +95,20 @@ export class CustomerResponseDto {
      */
     @Expose()
     updatedAt!: Date;
+
+    /**
+     * Оценка рисковости клиента (0-100). Рассчитывается на основе истории работы с задолженностью.
+     * @example 45
+     */
+    @Expose()
+    riskScore?: number;
+
+    /**
+     * Уровень риска клиента на основе riskScore.
+     * @example "MEDIUM"
+     */
+    @Expose()
+    riskLevel?: RiskLevel;
 
     // Поле userId не включается в ответ API, поэтому для него нет @Expose
 }

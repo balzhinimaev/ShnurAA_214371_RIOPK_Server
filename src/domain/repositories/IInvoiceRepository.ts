@@ -20,6 +20,10 @@ export interface DashboardSummaryData {
     averageReceivables: number; // Средняя ДЗ за период
     turnoverRatio: number; // Оборачиваемость ДЗ
     periodRevenue: number; // Выручка за период (для расчета оборачиваемости)
+    // Показатели на основе истории платежей
+    averagePaymentDays: number; // Средний срок оплаты (от выставления до оплаты)
+    onTimePaymentsAmount: number; // Сумма платежей в срок
+    overduePaymentsPercentage: number; // Процент просроченных платежей
 }
 
 export interface IInvoiceRepository {

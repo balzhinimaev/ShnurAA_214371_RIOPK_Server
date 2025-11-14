@@ -135,6 +135,21 @@ __decorate([
  *           format: float
  *           description: Выручка за период (текущий месяц). Сумма всех счетов, созданных в текущем месяце.
  *           example: 1125000.00
+ *         averagePaymentDays:
+ *           type: number
+ *           format: float
+ *           description: Средний срок оплаты (от выставления счета до оплаты, в днях). Рассчитывается на основе истории платежей.
+ *           example: 28.5
+ *         onTimePaymentsAmount:
+ *           type: number
+ *           format: float
+ *           description: Сумма платежей, которые были произведены в срок (paymentDate <= dueDate).
+ *           example: 850000.00
+ *         overduePaymentsPercentage:
+ *           type: number
+ *           format: float
+ *           description: Процент просроченных платежей от общей суммы всех платежей. Рассчитывается на основе истории платежей.
+ *           example: 15.3
  *       required:
  *         - totalReceivables
  *         - overdueReceivables
@@ -147,6 +162,9 @@ __decorate([
  *         - averageReceivables
  *         - turnoverRatio
  *         - periodRevenue
+ *         - averagePaymentDays
+ *         - onTimePaymentsAmount
+ *         - overduePaymentsPercentage
  */
 class DashboardSummaryDto {
     constructor() {
@@ -216,6 +234,24 @@ class DashboardSummaryDto {
             writable: true,
             value: void 0
         }); // Выручка за период
+        Object.defineProperty(this, "averagePaymentDays", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Средний срок оплаты (от выставления до оплаты)
+        Object.defineProperty(this, "onTimePaymentsAmount", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Сумма платежей в срок
+        Object.defineProperty(this, "overduePaymentsPercentage", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Процент просроченных платежей
     }
 }
 exports.DashboardSummaryDto = DashboardSummaryDto;
@@ -264,4 +300,16 @@ __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", Number)
 ], DashboardSummaryDto.prototype, "periodRevenue", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "averagePaymentDays", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "onTimePaymentsAmount", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], DashboardSummaryDto.prototype, "overduePaymentsPercentage", void 0);
 //# sourceMappingURL=dashboard-summary.dto.js.map

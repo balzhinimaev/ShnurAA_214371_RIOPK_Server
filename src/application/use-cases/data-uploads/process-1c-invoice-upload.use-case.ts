@@ -45,6 +45,7 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
             | 'getDaysOverdue'
             | 'calculateDebtWorkStatus'
             | 'applyPayment'
+            | 'toJSON'
         >,
     ): Promise<Invoice>;
     findByInvoiceNumberAndCustomerId(
@@ -86,11 +87,18 @@ export class Process1cInvoiceUploadUseCase {
             const fileContent = fs.readFileSync(filePath, 'utf-8');
             const parseResult = await this.parseCsv(fileContent);
 
-            parseResult.errors.forEach((err) =>
+            // Фильтруем некритические предупреждения (например, "Too many fields")
+            parseResult.errors.forEach((err) => {
+                const errorMessage = err.message || 'Неизвестная ошибка';
+                // Пропускаем предупреждения о количестве полей, если данные успешно распарсены
+                if (errorMessage.includes('Too many fields') && parseResult.data.length > 0) {
+                    console.warn(`CSV parsing warning (non-critical): ${errorMessage} (строка ${err.row})`);
+                    return; // Не добавляем в критические ошибки
+                }
                 this.rowErrors.push(
-                    `Ошибка парсинга CSV: ${err.message || 'Неизвестная ошибка'} (строка ${err.row})`,
-                ),
-            );
+                    `Ошибка парсинга CSV: ${errorMessage} (строка ${err.row})`,
+                );
+            });
 
             const rowsToProcess = parseResult.data;
             totalRows = rowsToProcess.length;
@@ -233,6 +241,10 @@ export class Process1cInvoiceUploadUseCase {
             } else {
                 // Счет уже существует с теми же данными - пропускаем
                 this.skippedRowsCount++;
+                // Добавляем информативное сообщение о пропуске
+                this.rowErrors.push(
+                    `Строка ${rowIndex}: Счет "${validatedData.invoiceNumber}" для клиента "${validatedData.customerName}" уже существует с теми же данными (оплата не изменилась). Строка пропущена.`,
+                );
             }
             return;
         }
@@ -332,10 +344,26 @@ export class Process1cInvoiceUploadUseCase {
             errors.push('Некорректная дата окончания услуги');
         }
 
-        const dueDate = this.parseDate(dueDateStr);
+        let dueDate = this.parseDate(dueDateStr);
         if (!dueDate) {
             errors.push('Некорректная дата планируемой оплаты');
         }
+        // АВТОСДВИГ ДАТ ОТКЛЮЧЕН ДЛЯ ДЕМОНСТРАЦИИ ЭВОЛЮЦИИ ДЗ
+        // else {
+        //     // Для демо-данных: если дата планируемой оплаты в прошлом, сдвигаем ее в будущее
+        //     // чтобы счет не был просроченным для демонстрации
+        //     const today = new Date();
+        //     if (dueDate < today) {
+        //         // Сдвигаем дату на год вперед, сохраняя месяц и день
+        //         const futureDueDate = new Date(dueDate);
+        //         futureDueDate.setFullYear(futureDueDate.getFullYear() + 1);
+        //         // Если после сдвига дата все еще в прошлом (редкий случай), сдвигаем еще на год
+        //         if (futureDueDate < today) {
+        //             futureDueDate.setFullYear(futureDueDate.getFullYear() + 1);
+        //         }
+        //         dueDate = futureDueDate;
+        //     }
+        // }
 
         const actualPaymentDate = actualPaymentDateStr
             ? this.parseDate(actualPaymentDateStr) ?? undefined
@@ -410,6 +438,7 @@ export class Process1cInvoiceUploadUseCase {
      * Нормализует даты из старых CSV для демонстрации.
      * Если дата старше 200 дней, переносит её на текущий год,
      * сохраняя месяц и день для правильной возрастной структуры.
+     * Для дат планируемой оплаты гарантирует, что они будут в будущем.
      */
     private normalizeDateForDemo(date: Date): Date {
         const today = new Date();
@@ -420,9 +449,15 @@ export class Process1cInvoiceUploadUseCase {
             const normalized = new Date(date);
             normalized.setFullYear(today.getFullYear());
 
-            // Если после переноса дата всё ещё в будущем, сдвигаем на год назад
+            // Если после переноса дата в будущем, сдвигаем на год назад
             if (normalized > today) {
                 normalized.setFullYear(today.getFullYear() - 1);
+            }
+            
+            // Если дата все еще в прошлом (но не слишком далеко), сдвигаем вперед на год
+            // чтобы она была в будущем для демо-данных
+            if (normalized < today && diffDays < 400) {
+                normalized.setFullYear(today.getFullYear() + 1);
             }
 
             return normalized;

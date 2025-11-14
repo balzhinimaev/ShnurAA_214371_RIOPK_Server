@@ -5,6 +5,10 @@ const tsyringe_1 = require("tsyringe");
 const IJwtService_1 = require("../../../../application/interfaces/IJwtService");
 const AppError_1 = require("../../../../application/errors/AppError");
 const authMiddleware = async (req, _res, next) => {
+    // Пропускаем OPTIONS запросы (CORS preflight) без аутентификации
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return next(new AppError_1.AppError('Ошибка аутентификации: токен не предоставлен.', 401));

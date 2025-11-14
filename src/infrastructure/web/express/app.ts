@@ -20,8 +20,46 @@ app.use(swaggerDocsPath, swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 console.log(`Swagger UI available at http://localhost:${config.port}${swaggerDocsPath}`);
 
 // Базовые Middlewares
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    crossOriginEmbedderPolicy: false,
+}));
+
+// Настройка CORS с поддержкой credentials и явным указанием origin
+const corsOptions = {
+    origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+        // В development разрешаем все origin, в production нужно указать конкретные
+        if (config.env === 'development' || !origin) {
+            callback(null, true);
+        } else {
+            // Здесь можно добавить проверку конкретных origin для production
+            callback(null, true);
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400, // 24 часа
+};
+
+app.use(cors(corsOptions));
+
+// Логирование OPTIONS запросов для отладки CORS
+if (config.env === 'development') {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+        if (req.method === 'OPTIONS') {
+            console.log('[CORS] OPTIONS preflight request:', {
+                origin: req.headers.origin,
+                method: req.method,
+                path: req.path,
+                headers: req.headers,
+            });
+        }
+        next();
+    });
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 if (config.env === 'development') {

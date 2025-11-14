@@ -13,12 +13,25 @@ import { AppError } from '../../../../application/errors/AppError';
 
 @injectable()
 export class MongoCustomerRepository implements ICustomerRepository {
-    // Хелпер маппинга: принимает простой объект (из .lean())
+    // Хелпер маппинга: принимает простой объект (из .lean() или .toObject())
     private mapToDomain(doc: any | null): Customer | null {
         if (!doc) return null;
+        
+        // Обрабатываем оба случая: когда используется lean() (_id) и toObject() (id после transform)
+        let id: string;
+        if (doc.id) {
+            // После toObject() transform уже преобразовал _id в id
+            id = typeof doc.id === 'string' ? doc.id : doc.id.toString();
+        } else if (doc._id) {
+            // При lean() transform не применяется, используем _id
+            id = typeof doc._id === 'string' ? doc._id : doc._id.toString();
+        } else {
+            console.error('Customer document missing both id and _id:', doc);
+            throw new Error('Не удалось определить ID клиента');
+        }
+        
         return new Customer({
-            // Используем _id, если transform в схеме не настроен/не используется
-            id: doc._id.toString(),
+            id: id,
             name: doc.name,
             unp: doc.unp,
             contactInfo: doc.contactInfo,
@@ -126,19 +139,52 @@ export class MongoCustomerRepository implements ICustomerRepository {
             offset = 0,
             sortBy = 'name', // Сортировка по имени по умолчанию
             sortOrder = 'asc',
-            // filter // Опционально: добавить обработку фильтров, если нужно
+            name,
+            unp,
+            contactInfo,
         } = options;
 
-        // Глобальный фильтр (пока пустой, можно добавить поиск по имени/ИНН)
+        // Глобальный фильтр с поддержкой поиска
         const filterQuery: FilterQuery<ICustomerDocument> = {};
-        // if (filter?.name) { filterQuery.name = new RegExp(filter.name, 'i'); }
-        // if (filter?.unp) { filterQuery.unp = filter.unp; }
+        
+        // Поиск по названию (регистронезависимый, частичное совпадение)
+        if (name && name.trim()) {
+            filterQuery.name = { $regex: name.trim(), $options: 'i' };
+        }
+        
+        // Поиск по УНП (регистронезависимый, частичное совпадение)
+        if (unp && unp.trim()) {
+            filterQuery.unp = { $regex: unp.trim(), $options: 'i' };
+        }
+        
+        // Поиск по контактной информации (регистронезависимый, частичное совпадение)
+        if (contactInfo && contactInfo.trim()) {
+            filterQuery.contactInfo = { $regex: contactInfo.trim(), $options: 'i' };
+        }
 
         const sortQuery: { [key: string]: 1 | -1 } = {};
         // Валидация sortBy, чтобы избежать NoSQL инъекций, если поле не разрешено
         const allowedSortFields = ['name', 'unp', 'createdAt', 'updatedAt'];
         const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'name'; // Поле по умолчанию, если передано невалидное
         sortQuery[sortField] = sortOrder === 'asc' ? 1 : -1;
+
+        // Логирование параметров запроса
+        console.log('[MongoCustomerRepository] findAll - Query params:', {
+            filters: {
+                name: name || null,
+                unp: unp || null,
+                contactInfo: contactInfo || null,
+            },
+            pagination: {
+                limit,
+                offset,
+            },
+            sorting: {
+                sortBy: sortField,
+                sortOrder,
+            },
+            filterQuery: JSON.stringify(filterQuery),
+        });
 
         try {
             const [customerDocs, total] = await Promise.all([
@@ -156,9 +202,20 @@ export class MongoCustomerRepository implements ICustomerRepository {
                 .map((doc) => this.mapToDomain(doc))
                 .filter((customer): customer is Customer => customer !== null); // Отфильтровываем null на всякий случай
 
+            // Логирование результата
+            console.log('[MongoCustomerRepository] findAll - Result:', {
+                total,
+                returned: customers.length,
+                filtersApplied: Object.keys(filterQuery).length > 0,
+            });
+
             return { customers, total };
         } catch (dbError: any) {
-            console.error(`Error in findAll customers:`, dbError);
+            console.error('[MongoCustomerRepository] findAll - Database error:', {
+                error: dbError.message,
+                stack: dbError.stack,
+                filterQuery: JSON.stringify(filterQuery),
+            });
             throw new AppError(
                 'Ошибка базы данных при получении списка клиентов',
                 500,

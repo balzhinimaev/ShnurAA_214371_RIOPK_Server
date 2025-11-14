@@ -17,6 +17,7 @@ type InvoiceDocumentProps = Omit<
     | 'calculateDebtWorkStatus'
     | 'applyPayment'
     | 'customerId'
+    | 'toJSON'
 >;
 
 // 2. Создаем интерфейс документа Mongoose с правильным типом customerId

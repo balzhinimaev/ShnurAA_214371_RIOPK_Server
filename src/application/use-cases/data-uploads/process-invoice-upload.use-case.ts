@@ -59,6 +59,7 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
             | 'getDaysOverdue'
             | 'calculateDebtWorkStatus'
             | 'applyPayment'
+            | 'toJSON'
         >,
     ): Promise<Invoice>;
     findByInvoiceNumberAndCustomerId(

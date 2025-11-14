@@ -170,6 +170,41 @@ class Invoice {
     get outstandingAmount() {
         return this.totalAmount - this.paidAmount;
     }
+    // Метод для сериализации в JSON (чтобы outstandingAmount и customer включались)
+    toJSON() {
+        return {
+            id: this.id,
+            invoiceNumber: this.invoiceNumber,
+            customerId: this.customerId,
+            customer: this.customer ? {
+                id: this.customer.id,
+                name: this.customer.name,
+                unp: this.customer.unp,
+                contactInfo: this.customer.contactInfo,
+                createdAt: this.customer.createdAt,
+                updatedAt: this.customer.updatedAt,
+            } : undefined,
+            issueDate: this.issueDate,
+            dueDate: this.dueDate,
+            serviceStartDate: this.serviceStartDate,
+            serviceEndDate: this.serviceEndDate,
+            totalAmount: this.totalAmount,
+            paidAmount: this.paidAmount,
+            outstandingAmount: this.outstandingAmount, // Включаем вычисляемое поле
+            paymentTermDays: this.paymentTermDays,
+            actualPaymentDate: this.actualPaymentDate,
+            status: this.status,
+            debtWorkStatus: this.debtWorkStatus,
+            serviceType: this.serviceType,
+            manager: this.manager,
+            contractNumber: this.contractNumber,
+            lastContactDate: this.lastContactDate,
+            contactResult: this.contactResult,
+            notes: this.notes,
+            createdAt: this.createdAt,
+            updatedAt: this.updatedAt,
+        };
+    }
     isOverdue(currentDate = new Date()) {
         return this.status !== 'PAID' && this.dueDate < currentDate;
     }

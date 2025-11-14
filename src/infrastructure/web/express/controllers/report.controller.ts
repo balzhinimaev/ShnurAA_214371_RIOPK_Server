@@ -97,6 +97,25 @@ export class ReportController {
                 sortOrder,
             });
 
+            // Логирование для отладки структуры данных
+            if (result.invoices.length > 0) {
+                const firstInvoice = result.invoices[0];
+                console.log('=== INVOICES API DEBUG ===');
+                console.log('Total invoices:', result.invoices.length);
+                console.log('First invoice ID:', firstInvoice.id);
+                console.log('Has customer:', !!firstInvoice.customer);
+                console.log('Customer UNP:', firstInvoice.customer?.unp);
+                console.log('OutstandingAmount:', firstInvoice.outstandingAmount);
+                console.log('OutstandingAmount type:', typeof firstInvoice.outstandingAmount);
+                console.log('Customer structure:', firstInvoice.customer ? {
+                    id: firstInvoice.customer.id,
+                    name: firstInvoice.customer.name,
+                    unp: firstInvoice.customer.unp,
+                    hasUnp: !!firstInvoice.customer.unp,
+                } : 'undefined');
+                console.log('========================');
+            }
+
             res.status(200).json(result);
         } catch (error) {
             next(error);

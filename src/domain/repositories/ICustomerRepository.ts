@@ -16,7 +16,10 @@ export interface FindAllCustomersOptions {
     offset?: number;
     sortBy?: keyof Customer | string;
     sortOrder?: 'asc' | 'desc';
-    // filter?: { name?: string; unp?: string }; // Опционально для глобального поиска
+    // Фильтры для поиска
+    name?: string; // Поиск по названию (регистронезависимый)
+    unp?: string; // Поиск по УНП (точное совпадение или частичное)
+    contactInfo?: string; // Поиск по контактной информации (регистронезависимый)
 }
 
 // Тип для обновления остается прежним

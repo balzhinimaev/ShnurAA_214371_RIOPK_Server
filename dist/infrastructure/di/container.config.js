@@ -13,6 +13,7 @@ const IJwtService_1 = require("../../application/interfaces/IJwtService");
 const IUserRepository_1 = require("../../domain/repositories/IUserRepository");
 const ICustomerRepository_1 = require("../../domain/repositories/ICustomerRepository");
 const IInvoiceRepository_1 = require("../../domain/repositories/IInvoiceRepository");
+const IDebtWorkRecordRepository_1 = require("../../domain/repositories/IDebtWorkRecordRepository");
 // import { ListUsersUseCase } from '../../application/use-cases/users/list-users.use-case';
 // import { GetUserByIdUseCase } from '../../application/use-cases/users/get-user-by-id.use-case';
 // import { UpdateUserUseCase } from '../../application/use-cases/users/update-user.use-case';
@@ -24,6 +25,7 @@ const user_repository_1 = require("../database/mongoose/repositories/user.reposi
 const user_repository_2 = require("../database/mongoose/repositories/user.repository");
 const customer_repository_1 = require("../database/mongoose/repositories/customer.repository");
 const invoice_repository_1 = require("../database/mongoose/repositories/invoice.repository");
+const debt_work_record_repository_1 = require("../database/mongoose/repositories/debt-work-record.repository");
 // Сервисы
 const bcrypt_password_hasher_1 = require("../services/bcrypt.password-hasher");
 const jsonwebtoken_service_1 = require("../services/jsonwebtoken.service");
@@ -40,6 +42,8 @@ const get_risk_concentration_use_case_1 = require("../../application/use-cases/r
 const get_contract_analysis_use_case_1 = require("../../application/use-cases/reports/get-contract-analysis.use-case");
 const process_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-invoice-upload.use-case");
 const process_1c_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case");
+const create_debt_work_record_use_case_1 = require("../../application/use-cases/customers/create-debt-work-record.use-case");
+const get_debt_work_history_use_case_1 = require("../../application/use-cases/customers/get-debt-work-history.use-case");
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 // 1. Базовые сервисы и конфигурация инфраструктуры
 // Регистрируем ДЕФОЛТНОЕ соединение Mongoose под специальным токеном.
@@ -69,6 +73,9 @@ tsyringe_1.container.register(ICustomerRepository_1.CustomerRepositoryToken, {
 // TODO: Адаптируйте MongoInvoiceRepository, чтобы он принимал Connection через DI
 tsyringe_1.container.register(IInvoiceRepository_1.InvoiceRepositoryToken, {
     useClass: invoice_repository_1.MongoInvoiceRepository,
+});
+tsyringe_1.container.register(IDebtWorkRecordRepository_1.DebtWorkRecordRepositoryToken, {
+    useClass: debt_work_record_repository_1.MongoDebtWorkRecordRepository,
 });
 // 3. Регистрация Use Cases
 // Use Cases зависят от интерфейсов репозиториев/сервисов,
@@ -108,6 +115,12 @@ tsyringe_1.container.register(process_invoice_upload_use_case_1.ProcessInvoiceUp
 });
 tsyringe_1.container.register(process_1c_invoice_upload_use_case_1.Process1cInvoiceUploadUseCase, {
     useClass: process_1c_invoice_upload_use_case_1.Process1cInvoiceUploadUseCase,
+});
+tsyringe_1.container.register(create_debt_work_record_use_case_1.CreateDebtWorkRecordUseCase, {
+    useClass: create_debt_work_record_use_case_1.CreateDebtWorkRecordUseCase,
+});
+tsyringe_1.container.register(get_debt_work_history_use_case_1.GetDebtWorkHistoryUseCase, {
+    useClass: get_debt_work_history_use_case_1.GetDebtWorkHistoryUseCase,
 });
 // --- Регистрация Controllers ---
 // Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.

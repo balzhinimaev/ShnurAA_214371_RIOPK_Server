@@ -1,10 +1,43 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
 var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
     var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
     if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MongoInvoiceRepository = void 0;
 // src/infrastructure/database/mongoose/repositories/invoice.repository.ts
@@ -14,6 +47,7 @@ const invoice_entity_1 = require("../../../../domain/entities/invoice.entity");
 const customer_entity_1 = require("../../../../domain/entities/customer.entity");
 const invoice_schema_1 = require("../schemas/invoice.schema");
 const AppError_1 = require("../../../../application/errors/AppError"); // Для возможных ошибок
+const customers_overdue_filters_dto_1 = require("../../../../application/dtos/reports/customers-overdue-filters.dto");
 let MongoInvoiceRepository = class MongoInvoiceRepository {
     /**
      * Преобразует документ Mongoose в доменную сущность Invoice.
@@ -21,13 +55,54 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
      * @returns Экземпляр Invoice.
      */
     mapToDomain(doc) {
-        const obj = doc && typeof doc.toObject === 'function'
-            ? doc.toObject()
-            : this.normalizeAggregateResult(doc);
+        // Если doc уже простой объект (из lean()), используем его напрямую
+        // Иначе используем toObject() или normalizeAggregateResult для агрегаций
+        let obj;
+        if (doc && typeof doc.toObject === 'function') {
+            obj = doc.toObject({ virtuals: true });
+        }
+        else if (doc && typeof doc === 'object') {
+            obj = doc;
+        }
+        else {
+            obj = this.normalizeAggregateResult(doc);
+        }
+        // Обработка populate для customerId
+        let customer = undefined;
+        let customerId;
+        // Проверяем, был ли customerId populate
+        // После lean() + populate customerId будет объектом с данными клиента
+        if (obj.customerId && typeof obj.customerId === 'object') {
+            const customerObj = obj.customerId;
+            // Проверяем, что это не просто ObjectId, а объект с данными (есть name или _id)
+            if (customerObj.name || customerObj._id) {
+                // Это populate данные
+                customerId = customerObj._id?.toString() || customerObj.id?.toString() || '';
+                if (customerObj.name) {
+                    customer = new customer_entity_1.Customer({
+                        id: customerId,
+                        name: customerObj.name || '',
+                        unp: customerObj.unp || undefined,
+                        contactInfo: customerObj.contactInfo || undefined,
+                        createdAt: customerObj.createdAt ? new Date(customerObj.createdAt) : new Date(),
+                        updatedAt: customerObj.updatedAt ? new Date(customerObj.updatedAt) : new Date(),
+                    });
+                }
+            }
+            else {
+                // Это просто ObjectId
+                customerId = customerObj.toString();
+            }
+        }
+        else {
+            // customerId это просто строка
+            customerId = obj.customerId?.toString() || '';
+        }
         return new invoice_entity_1.Invoice({
-            id: obj.id,
+            id: obj._id?.toString() || obj.id?.toString() || '',
             invoiceNumber: obj.invoiceNumber,
-            customerId: obj.customerId, // customerId будет строкой после toObject
+            customerId: customerId,
+            customer: customer, // Добавляем populate данные
             issueDate: obj.issueDate,
             dueDate: obj.dueDate,
             serviceStartDate: obj.serviceStartDate,
@@ -40,6 +115,7 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
             debtWorkStatus: obj.debtWorkStatus,
             serviceType: obj.serviceType,
             manager: obj.manager,
+            contractNumber: obj.contractNumber, // Добавляем contractNumber
             lastContactDate: obj.lastContactDate,
             contactResult: obj.contactResult,
             notes: obj.notes,
@@ -158,12 +234,37 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 customerId: customerObjectId, // Сохраняем как ObjectId
                 issueDate: data.issueDate,
                 dueDate: data.dueDate,
+                serviceStartDate: data.serviceStartDate,
+                serviceEndDate: data.serviceEndDate,
                 totalAmount: data.totalAmount,
                 paidAmount: data.paidAmount ?? 0,
                 paymentTermDays: data.paymentTermDays ?? 30, // Default to 30 days if not provided
+                actualPaymentDate: data.actualPaymentDate,
                 status: data.status ?? 'OPEN', // Статус по умолчанию OPEN
+                debtWorkStatus: data.debtWorkStatus,
+                serviceType: data.serviceType,
+                manager: data.manager,
+                contractNumber: data.contractNumber,
+                notes: data.notes,
             });
             const savedDoc = await newInvoiceDoc.save();
+            // Если счет создается с уже имеющейся оплатой, создаем запись в истории платежей
+            if (data.paidAmount && data.paidAmount > 0 && data.actualPaymentDate) {
+                const { PaymentHistoryModel } = await Promise.resolve().then(() => __importStar(require('../schemas/payment-history.schema')));
+                const isOnTime = data.actualPaymentDate <= data.dueDate;
+                let daysDelay = 0;
+                if (!isOnTime) {
+                    const diffTime = data.actualPaymentDate.getTime() - data.dueDate.getTime();
+                    daysDelay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+                await PaymentHistoryModel.create({
+                    invoiceId: savedDoc._id,
+                    amount: data.paidAmount,
+                    paymentDate: data.actualPaymentDate,
+                    isOnTime: isOnTime,
+                    daysDelay: daysDelay,
+                });
+            }
             return this.mapToDomain(savedDoc);
         }
         catch (error) {
@@ -175,6 +276,76 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 throw new AppError_1.AppError(`Счет с номером ${data.invoiceNumber} для клиента ${data.customerId} уже существует (concurrency).`, 409);
             }
             throw new AppError_1.AppError('Ошибка при создании счета', 500);
+        }
+    }
+    /**
+     * Рассчитывает показатели на основе истории платежей
+     * @returns Метрики платежей: средний срок оплаты, сумма платежей в срок, процент просроченных платежей
+     */
+    async calculatePaymentMetrics() {
+        try {
+            const { PaymentHistoryModel } = await Promise.resolve().then(() => __importStar(require('../schemas/payment-history.schema')));
+            // Получаем все платежи с информацией о счетах
+            const payments = await PaymentHistoryModel.aggregate([
+                {
+                    $lookup: {
+                        from: 'invoices',
+                        localField: 'invoiceId',
+                        foreignField: '_id',
+                        as: 'invoice',
+                    },
+                },
+                {
+                    $unwind: '$invoice',
+                },
+                {
+                    $addFields: {
+                        // Вычисляем количество дней от выставления счета до оплаты
+                        paymentDays: {
+                            $dateDiff: {
+                                startDate: '$invoice.issueDate',
+                                endDate: '$paymentDate',
+                                unit: 'day',
+                            },
+                        },
+                    },
+                },
+            ]).exec();
+            if (payments.length === 0) {
+                return {
+                    averagePaymentDays: 0,
+                    onTimePaymentsAmount: 0,
+                    overduePaymentsPercentage: 0,
+                };
+            }
+            // Средний срок оплаты (от выставления до оплаты)
+            const totalPaymentDays = payments.reduce((sum, p) => sum + (p.paymentDays || 0), 0);
+            const averagePaymentDays = totalPaymentDays / payments.length;
+            // Сумма платежей в срок
+            const onTimePaymentsAmount = payments
+                .filter((p) => p.isOnTime)
+                .reduce((sum, p) => sum + p.amount, 0);
+            // Общая сумма всех платежей
+            const totalPaymentsAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+            // Процент просроченных платежей
+            const overduePaymentsAmount = totalPaymentsAmount - onTimePaymentsAmount;
+            const overduePaymentsPercentage = totalPaymentsAmount > 0
+                ? parseFloat(((overduePaymentsAmount / totalPaymentsAmount) *
+                    100).toFixed(2))
+                : 0;
+            return {
+                averagePaymentDays: parseFloat(averagePaymentDays.toFixed(1)),
+                onTimePaymentsAmount: parseFloat(onTimePaymentsAmount.toFixed(2)),
+                overduePaymentsPercentage: overduePaymentsPercentage,
+            };
+        }
+        catch (error) {
+            console.error('Error calculating payment metrics:', error);
+            return {
+                averagePaymentDays: 0,
+                onTimePaymentsAmount: 0,
+                overduePaymentsPercentage: 0,
+            };
         }
     }
     /**
@@ -523,6 +694,8 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 const averagePaymentDelayDays = parseFloat((summary.averageDaysOverdue || 0).toFixed(1));
                 // Рассчитываем показатели оборачиваемости ДЗ
                 const periodMetrics = await this.calculateTurnoverMetrics(currentDate);
+                // Рассчитываем показатели на основе истории платежей
+                const paymentMetrics = await this.calculatePaymentMetrics();
                 const dashboardData = {
                     totalReceivables,
                     overdueReceivables,
@@ -535,6 +708,9 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     averageReceivables: periodMetrics.averageReceivables,
                     turnoverRatio: periodMetrics.turnoverRatio,
                     periodRevenue: periodMetrics.periodRevenue,
+                    averagePaymentDays: paymentMetrics.averagePaymentDays,
+                    onTimePaymentsAmount: paymentMetrics.onTimePaymentsAmount,
+                    overduePaymentsPercentage: paymentMetrics.overduePaymentsPercentage,
                 };
                 return dashboardData;
             }
@@ -549,6 +725,8 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 ];
                 // Рассчитываем показатели оборачиваемости даже если нет текущей ДЗ
                 const periodMetrics = await this.calculateTurnoverMetrics(currentDate);
+                // Рассчитываем показатели на основе истории платежей
+                const paymentMetrics = await this.calculatePaymentMetrics();
                 return {
                     totalReceivables: 0,
                     overdueReceivables: 0,
@@ -565,6 +743,9 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     averageReceivables: periodMetrics.averageReceivables,
                     turnoverRatio: periodMetrics.turnoverRatio,
                     periodRevenue: periodMetrics.periodRevenue,
+                    averagePaymentDays: paymentMetrics.averagePaymentDays,
+                    onTimePaymentsAmount: paymentMetrics.onTimePaymentsAmount,
+                    overduePaymentsPercentage: paymentMetrics.overduePaymentsPercentage,
                 };
             }
         }
@@ -786,9 +967,21 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     .skip(offset)
                     .limit(limit)
                     .populate('customerId', 'name unp contactInfo')
+                    .lean() // Используем lean() для получения простых объектов
                     .exec(),
                 invoice_schema_1.InvoiceModel.countDocuments(query).exec(),
             ]);
+            // Логирование для отладки populate
+            if (docs.length > 0) {
+                const firstDoc = docs[0];
+                console.log('=== POPULATE DEBUG ===');
+                console.log('customerId type:', typeof firstDoc.customerId);
+                console.log('customerId value:', firstDoc.customerId);
+                console.log('Is object:', typeof firstDoc.customerId === 'object');
+                console.log('Has name:', firstDoc.customerId?.name);
+                console.log('Full customerId:', JSON.stringify(firstDoc.customerId, null, 2));
+                console.log('====================');
+            }
             const invoices = docs.map((doc) => this.mapToDomain(doc));
             return {
                 invoices,
@@ -817,6 +1010,28 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
             const doc = await invoice_schema_1.InvoiceModel.findById(id).exec();
             if (!doc)
                 return null;
+            const oldPaidAmount = doc.paidAmount;
+            const paymentDifference = paidAmount - oldPaidAmount;
+            // Если сумма оплаты увеличилась, создаем запись в истории платежей
+            if (paymentDifference > 0 && actualPaymentDate) {
+                const { PaymentHistoryModel } = await Promise.resolve().then(() => __importStar(require('../schemas/payment-history.schema')));
+                // Определяем, был ли платеж в срок
+                const isOnTime = actualPaymentDate <= doc.dueDate;
+                // Вычисляем задержку в днях (если просрочен)
+                let daysDelay = 0;
+                if (!isOnTime) {
+                    const diffTime = actualPaymentDate.getTime() - doc.dueDate.getTime();
+                    daysDelay = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                }
+                // Создаем запись в истории платежей
+                await PaymentHistoryModel.create({
+                    invoiceId: doc._id,
+                    amount: paymentDifference, // Сохраняем только разницу (новый платеж)
+                    paymentDate: actualPaymentDate,
+                    isOnTime: isOnTime,
+                    daysDelay: daysDelay,
+                });
+            }
             // Обновляем суммы и даты
             doc.paidAmount = paidAmount;
             if (actualPaymentDate) {
@@ -1136,14 +1351,10 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 matchFilters.daysOverdue = matchFilters.daysOverdue || {};
                 matchFilters.daysOverdue.$lte = filters.maxDaysOverdue;
             }
-            // Фильтр по aging bucket (если не указаны minDaysOverdue/maxDaysOverdue)
-            if (filters.agingBucket &&
-                !filters.minDaysOverdue &&
-                !filters.maxDaysOverdue) {
-                matchFilters.agingBucket = filters.agingBucket;
-            }
-            // Исключаем CURRENT, если не указано includeCurrent
-            if (!filters.includeCurrent) {
+            // Исключаем CURRENT на уровне счетов, если не указано includeCurrent И не запрашивается CURRENT bucket
+            // Если явно запрашивается CURRENT bucket, автоматически включаем его
+            // Примечание: фильтр по agingBucket для клиентов будет применен ПОСЛЕ группировки
+            if (!filters.includeCurrent && filters.agingBucket !== customers_overdue_filters_dto_1.AgingBucket.CURRENT) {
                 matchFilters.daysOverdue = matchFilters.daysOverdue || {};
                 matchFilters.daysOverdue.$gt = 0;
             }
@@ -1275,6 +1486,15 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     },
                 },
             });
+            // Фильтр по aging bucket для клиентов (применяется ПОСЛЕ вычисления agingBucket клиента)
+            // Если не указаны minDaysOverdue/maxDaysOverdue
+            if (filters.agingBucket &&
+                !filters.minDaysOverdue &&
+                !filters.maxDaysOverdue) {
+                pipeline.push({
+                    $match: { agingBucket: filters.agingBucket },
+                });
+            }
             // Подтягиваем данные о клиенте
             pipeline.push({
                 $lookup: {

@@ -3,12 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // src/infrastructure/web/express/routes/customer.routes.ts
 const express_1 = require("express");
 const customer_controller_1 = require("../controllers/customer.controller");
+const debt_work_controller_1 = require("../controllers/debt-work.controller");
 const auth_middleware_1 = require("../middlewares/auth.middleware");
 const role_middleware_1 = require("../middlewares/role.middleware");
 // import { validationMiddleware } from '../middlewares/validation.middleware';
 // import { UpdateCustomerDto } from '../../../../application/dtos/customers/update-customer.dto';
 const router = (0, express_1.Router)();
 const customerController = new customer_controller_1.CustomerController();
+const debtWorkController = new debt_work_controller_1.DebtWorkController();
 // --- Применяем общую аутентификацию ко всем маршрутам ---
 router.use(auth_middleware_1.authMiddleware);
 // --- Маршруты для /api/v1/customers ---
@@ -18,11 +20,51 @@ router.use(auth_middleware_1.authMiddleware);
  *   get:
  *     tags: [Клиенты]
  *     summary: Получить глобальный список клиентов
- *     description: Возвращает список всех клиентов в системе с пагинацией и сортировкой. Доступно ролям ADMIN, ANALYST и MANAGER.
+ *     description: Возвращает список всех клиентов в системе с пагинацией, сортировкой и фильтрацией. Доступно ролям ADMIN, ANALYST и MANAGER.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       # ... (параметры limit, offset, sortBy, sortOrder остаются)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Количество записей на странице
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Смещение для пагинации
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [name, unp, createdAt, updatedAt]
+ *           default: name
+ *         description: Поле для сортировки
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: asc
+ *         description: Направление сортировки
+ *       - in: query
+ *         name: name
+ *         schema:
+ *           type: string
+ *         description: Фильтр по названию клиента (регистронезависимый поиск)
+ *       - in: query
+ *         name: unp
+ *         schema:
+ *           type: string
+ *         description: Фильтр по УНП (регистронезависимый поиск)
+ *       - in: query
+ *         name: contactInfo
+ *         schema:
+ *           type: string
+ *         description: Фильтр по контактной информации (регистронезависимый поиск)
  *     responses:
  *       '200':
  *         description: Успешный ответ со списком клиентов.
@@ -39,6 +81,107 @@ router.use(auth_middleware_1.authMiddleware);
  */
 router.get('/', (0, role_middleware_1.roleMiddleware)(['ADMIN', 'ANALYST', 'MANAGER']), // Разрешаем всем читать
 customerController.getAllCustomers);
+/**
+ * @openapi
+ * /customers/{customerId}/debt-work:
+ *   get:
+ *     tags: [Клиенты]
+ *     summary: Получить историю работы с задолженностями клиента
+ *     description: Возвращает историю работы с задолженностями и статистику рисковости клиента. Доступно ролям ADMIN, ANALYST и MANAGER.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: customerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID клиента
+ *       - in: query
+ *         name: invoiceId
+ *         schema:
+ *           type: string
+ *         description: Фильтр по ID счета (опционально)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *         description: Количество записей на странице
+ *       - in: query
+ *         name: offset
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Смещение для пагинации
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [actionDate, createdAt]
+ *           default: actionDate
+ *         description: Поле для сортировки
+ *       - in: query
+ *         name: sortOrder
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Направление сортировки
+ *     responses:
+ *       '200':
+ *         description: Успешный ответ с историей и статистикой.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DebtWorkHistoryResponseDto'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.get('/:customerId/debt-work', (0, role_middleware_1.roleMiddleware)(['ADMIN', 'ANALYST', 'MANAGER']), debtWorkController.getDebtWorkHistory);
+/**
+ * @openapi
+ * /customers/{customerId}/debt-work:
+ *   post:
+ *     tags: [Клиенты]
+ *     summary: Создать запись о работе с задолженностью
+ *     description: Создает новую запись о работе с задолженностью клиента. Доступно ролям ADMIN, ANALYST и MANAGER.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: customerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID клиента
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateDebtWorkRecordDto'
+ *     responses:
+ *       '201':
+ *         description: Запись успешно создана.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DebtWorkRecordDto'
+ *       '400':
+ *         $ref: '#/components/responses/BadRequestError'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.post('/:customerId/debt-work', (0, role_middleware_1.roleMiddleware)(['ADMIN', 'ANALYST', 'MANAGER']), debtWorkController.createDebtWorkRecord);
 /**
  * @openapi
  * /customers/{id}:
