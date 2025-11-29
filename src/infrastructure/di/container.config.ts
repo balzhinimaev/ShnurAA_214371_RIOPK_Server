@@ -61,6 +61,14 @@ import { ProcessInvoiceUploadUseCase } from '../../application/use-cases/data-up
 import { Process1cInvoiceUploadUseCase } from '../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case';
 import { CreateDebtWorkRecordUseCase } from '../../application/use-cases/customers/create-debt-work-record.use-case';
 import { GetDebtWorkHistoryUseCase } from '../../application/use-cases/customers/get-debt-work-history.use-case';
+import { UpdateDebtWorkRecordUseCase } from '../../application/use-cases/customers/update-debt-work-record.use-case';
+import { DeleteDebtWorkRecordUseCase } from '../../application/use-cases/customers/delete-debt-work-record.use-case';
+import { GetCustomerFullUseCase } from '../../application/use-cases/customers/get-customer-full.use-case';
+import { GetRecommendationsUseCase } from '../../application/use-cases/reports/get-recommendations.use-case';
+import { GetInvoiceDetailsUseCase } from '../../application/use-cases/reports/get-invoice-details.use-case';
+import { GetReceivablesDynamicsUseCase } from '../../application/use-cases/reports/get-receivables-dynamics.use-case';
+import { GetReceivablesStructureUseCase } from '../../application/use-cases/reports/get-receivables-structure.use-case';
+import { GetSummaryReportUseCase } from '../../application/use-cases/reports/get-summary-report.use-case';
 
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 
@@ -156,6 +164,30 @@ container.register<CreateDebtWorkRecordUseCase>(CreateDebtWorkRecordUseCase, {
 });
 container.register<GetDebtWorkHistoryUseCase>(GetDebtWorkHistoryUseCase, {
     useClass: GetDebtWorkHistoryUseCase,
+});
+container.register<UpdateDebtWorkRecordUseCase>(UpdateDebtWorkRecordUseCase, {
+    useClass: UpdateDebtWorkRecordUseCase,
+});
+container.register<DeleteDebtWorkRecordUseCase>(DeleteDebtWorkRecordUseCase, {
+    useClass: DeleteDebtWorkRecordUseCase,
+});
+container.register<GetCustomerFullUseCase>(GetCustomerFullUseCase, {
+    useClass: GetCustomerFullUseCase,
+});
+container.register<GetRecommendationsUseCase>(GetRecommendationsUseCase, {
+    useClass: GetRecommendationsUseCase,
+});
+container.register<GetInvoiceDetailsUseCase>(GetInvoiceDetailsUseCase, {
+    useClass: GetInvoiceDetailsUseCase,
+});
+container.register<GetReceivablesDynamicsUseCase>(GetReceivablesDynamicsUseCase, {
+    useClass: GetReceivablesDynamicsUseCase,
+});
+container.register<GetReceivablesStructureUseCase>(GetReceivablesStructureUseCase, {
+    useClass: GetReceivablesStructureUseCase,
+});
+container.register<GetSummaryReportUseCase>(GetSummaryReportUseCase, {
+    useClass: GetSummaryReportUseCase,
 });
 
 // --- Регистрация Controllers ---

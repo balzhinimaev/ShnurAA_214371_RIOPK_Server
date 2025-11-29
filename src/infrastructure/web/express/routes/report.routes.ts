@@ -523,6 +523,92 @@ router.get('/contract-analysis', reportController.getContractAnalysis);
 
 /**
  * @openapi
+ * /reports/recommendations:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Сводка рекомендаций по работе с задолженностями
+ *     description: Возвращает статистику по категориям просрочек и список приоритетных действий по счетам.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Сводка рекомендаций.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 byCategory:
+ *                   type: object
+ *                   properties:
+ *                     NOT_DUE:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         totalAmount:
+ *                           type: number
+ *                     NOTIFY:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         totalAmount:
+ *                           type: number
+ *                     CLAIM:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         totalAmount:
+ *                           type: number
+ *                     COURT:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         totalAmount:
+ *                           type: number
+ *                     BAD_DEBT:
+ *                       type: object
+ *                       properties:
+ *                         count:
+ *                           type: integer
+ *                         totalAmount:
+ *                           type: number
+ *                 priorityActions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       invoiceId:
+ *                         type: string
+ *                       invoiceNumber:
+ *                         type: string
+ *                       customerId:
+ *                         type: string
+ *                       customerName:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       daysOverdue:
+ *                         type: integer
+ *                       category:
+ *                         type: string
+ *                         enum: [NOT_DUE, NOTIFY, CLAIM, COURT, BAD_DEBT]
+ *                       recommendation:
+ *                         type: string
+ *                       hasClaim:
+ *                         type: boolean
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/recommendations', reportController.getRecommendations);
+
+/**
+ * @openapi
  * /reports/invoices:
  *   get:
  *     tags: [Отчеты]
@@ -632,6 +718,96 @@ router.get('/invoices', reportController.listInvoices);
 
 /**
  * @openapi
+ * /reports/invoices/{id}:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Получить детальную информацию о счете
+ *     description: Возвращает расширенную информацию о счете включая историю платежей, категорию просрочки и рекомендации.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID счета
+ *     responses:
+ *       200:
+ *         description: Детальная информация о счете.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 invoiceNumber:
+ *                   type: string
+ *                 customerId:
+ *                   type: string
+ *                 customer:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     name:
+ *                       type: string
+ *                     unp:
+ *                       type: string
+ *                 dueDate:
+ *                   type: string
+ *                   format: date-time
+ *                 totalAmount:
+ *                   type: number
+ *                 paidAmount:
+ *                   type: number
+ *                 outstandingAmount:
+ *                   type: number
+ *                 status:
+ *                   type: string
+ *                 daysOverdue:
+ *                   type: integer
+ *                 daysUntilDue:
+ *                   type: integer
+ *                 dueStatus:
+ *                   type: string
+ *                   enum: [FUTURE, TODAY, OVERDUE]
+ *                 overdueCategory:
+ *                   type: string
+ *                   enum: [NOT_DUE, NOTIFY, CLAIM, COURT, BAD_DEBT]
+ *                 recommendation:
+ *                   type: string
+ *                 payments:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       paymentDate:
+ *                         type: string
+ *                         format: date-time
+ *                       isOnTime:
+ *                         type: boolean
+ *                       daysDelay:
+ *                         type: integer
+ *                 lastPaymentDate:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Ошибка авторизации.
+ *       404:
+ *         description: Счет не найден.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/invoices/:id', reportController.getInvoiceDetails);
+
+/**
+ * @openapi
  * /reports/invoices/apply-payment:
  *   post:
  *     tags: [Отчеты]
@@ -670,5 +846,253 @@ router.get('/invoices', reportController.listInvoices);
  *         description: Внутренняя ошибка сервера.
  */
 router.post('/invoices/apply-payment', reportController.applyPayment);
+
+/**
+ * @openapi
+ * /reports/receivables-dynamics:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Динамика дебиторской задолженности
+ *     description: Возвращает динамику ДЗ по месяцам для построения графиков. По умолчанию за последние 12 месяцев.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Начало периода (опционально)
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Конец периода (опционально, по умолчанию - текущая дата)
+ *     responses:
+ *       200:
+ *         description: Динамика ДЗ по периодам.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 dynamics:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       period:
+ *                         type: string
+ *                         description: Период (YYYY-MM)
+ *                       totalDebt:
+ *                         type: number
+ *                         description: Общая ДЗ на конец периода
+ *                       overdueDebt:
+ *                         type: number
+ *                         description: Просроченная ДЗ на конец периода
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     startPeriod:
+ *                       type: string
+ *                     endPeriod:
+ *                       type: string
+ *                     trend:
+ *                       type: string
+ *                       enum: [increasing, decreasing, stable]
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/receivables-dynamics', reportController.getReceivablesDynamics);
+
+/**
+ * @openapi
+ * /reports/receivables-structure:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Структура дебиторской задолженности
+ *     description: Возвращает структуру ДЗ по срокам (aging buckets), типам услуг и менеджерам.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Дата расчета (опционально, по умолчанию - текущая дата)
+ *     responses:
+ *       200:
+ *         description: Структура ДЗ.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 byAgingBucket:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       bucket:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       count:
+ *                         type: integer
+ *                       percentage:
+ *                         type: number
+ *                 byServiceType:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       serviceType:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       count:
+ *                         type: integer
+ *                       percentage:
+ *                         type: number
+ *                 byManager:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       manager:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       count:
+ *                         type: integer
+ *                       percentage:
+ *                         type: number
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/receivables-structure', reportController.getReceivablesStructure);
+
+/**
+ * @openapi
+ * /reports/summary:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Сводный отчет анализа ДЗ
+ *     description: Возвращает комплексный отчет, объединяющий сводку дашборда, динамику и структуру ДЗ.
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Сводный отчет.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 summary:
+ *                   $ref: '#/components/schemas/DashboardSummaryDto'
+ *                 dynamics:
+ *                   type: object
+ *                 structure:
+ *                   type: object
+ *                 generatedAt:
+ *                   type: string
+ *                   format: date-time
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/summary', reportController.getSummaryReport);
+
+/**
+ * @openapi
+ * /reports/debt-concentration:
+ *   get:
+ *     tags: [Отчеты]
+ *     summary: Анализ концентрации задолженности
+ *     description: Возвращает удельный вес дебиторской задолженности по контрагентам в процентах от общей суммы, включая долю в просроченной задолженности.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Дата расчета (опционально, по умолчанию - текущая дата)
+ *       - in: query
+ *         name: minPercentage
+ *         schema:
+ *           type: number
+ *         description: Минимальный процент для фильтрации контрагентов (опционально)
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Ограничение количества контрагентов в результате (опционально)
+ *     responses:
+ *       200:
+ *         description: Результат анализа концентрации задолженности.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 customers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       customerId:
+ *                         type: string
+ *                       customerName:
+ *                         type: string
+ *                       customerUnp:
+ *                         type: string
+ *                       totalDebt:
+ *                         type: number
+ *                       overdueDebt:
+ *                         type: number
+ *                       invoiceCount:
+ *                         type: integer
+ *                       oldestDebtDays:
+ *                         type: integer
+ *                       percentageOfTotal:
+ *                         type: number
+ *                         description: Удельный вес задолженности контрагента в процентах от общей суммы ДЗ
+ *                       percentageOfOverdue:
+ *                         type: number
+ *                         description: Удельный вес просроченной задолженности контрагента в процентах от общей суммы просроченной ДЗ
+ *                 summary:
+ *                   type: object
+ *                   properties:
+ *                     totalCustomers:
+ *                       type: integer
+ *                     totalDebt:
+ *                       type: number
+ *                     totalOverdueDebt:
+ *                       type: number
+ *                     asOfDate:
+ *                       type: string
+ *                       format: date-time
+ *                     maxConcentration:
+ *                       type: number
+ *                     top5Concentration:
+ *                       type: number
+ *                     top10Concentration:
+ *                       type: number
+ *       401:
+ *         description: Ошибка авторизации.
+ *       500:
+ *         description: Внутренняя ошибка сервера.
+ */
+router.get('/debt-concentration', reportController.getRiskConcentration);
 
 export default router;

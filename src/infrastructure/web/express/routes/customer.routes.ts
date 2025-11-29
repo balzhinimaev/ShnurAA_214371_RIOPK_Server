@@ -200,6 +200,221 @@ router.post(
 
 /**
  * @openapi
+ * /customers/{customerId}/debt-work/{recordId}:
+ *   put:
+ *     tags: [Клиенты]
+ *     summary: Обновить запись о работе с задолженностью
+ *     description: Обновляет существующую запись о работе с задолженностью клиента. Доступно ролям ADMIN, ANALYST и MANAGER.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: customerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID клиента
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID записи о работе с задолженностью
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdateDebtWorkRecordDto'
+ *     responses:
+ *       '200':
+ *         description: Запись успешно обновлена.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DebtWorkRecordDto'
+ *       '400':
+ *         $ref: '#/components/responses/BadRequestError'
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '403':
+ *         description: Запись не принадлежит указанному клиенту
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.put(
+    '/:customerId/debt-work/:recordId',
+    roleMiddleware(['ADMIN', 'ANALYST', 'MANAGER']),
+    debtWorkController.updateDebtWorkRecord,
+);
+
+/**
+ * @openapi
+ * /customers/{customerId}/debt-work/{recordId}:
+ *   delete:
+ *     tags: [Клиенты]
+ *     summary: Удалить запись о работе с задолженностью
+ *     description: Удаляет запись о работе с задолженностью клиента. Доступно ролям ADMIN, ANALYST и MANAGER.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: customerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID клиента
+ *       - in: path
+ *         name: recordId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID записи о работе с задолженностью
+ *     responses:
+ *       '204':
+ *         description: Запись успешно удалена.
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '403':
+ *         description: Запись не принадлежит указанному клиенту
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.delete(
+    '/:customerId/debt-work/:recordId',
+    roleMiddleware(['ADMIN', 'ANALYST', 'MANAGER']),
+    debtWorkController.deleteDebtWorkRecord,
+);
+
+/**
+ * @openapi
+ * /customers/{id}/full:
+ *   get:
+ *     tags: [Клиенты]
+ *     summary: Получить полные данные дебитора с аналитикой
+ *     description: Возвращает полную информацию о дебиторе включая список задолженностей, статистику платежей, оценку рисков и рейтинг платежеспособности.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID дебитора
+ *     responses:
+ *       '200':
+ *         description: Полные данные о дебиторе.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 unp:
+ *                   type: string
+ *                 contactInfo:
+ *                   type: string
+ *                 invoices:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       invoiceNumber:
+ *                         type: string
+ *                       totalAmount:
+ *                         type: number
+ *                       outstandingAmount:
+ *                         type: number
+ *                       dueDate:
+ *                         type: string
+ *                         format: date-time
+ *                       daysOverdue:
+ *                         type: integer
+ *                       overdueCategory:
+ *                         type: string
+ *                         enum: [NOT_DUE, NOTIFY, CLAIM, COURT, BAD_DEBT]
+ *                       status:
+ *                         type: string
+ *                 statistics:
+ *                   type: object
+ *                   properties:
+ *                     totalInvoices:
+ *                       type: integer
+ *                     totalDebt:
+ *                       type: number
+ *                     overdueDebt:
+ *                       type: number
+ *                     paidOnTimeCount:
+ *                       type: integer
+ *                     paidLateCount:
+ *                       type: integer
+ *                     averagePaymentDelay:
+ *                       type: number
+ *                     onTimePaymentRate:
+ *                       type: number
+ *                 riskAssessment:
+ *                   type: object
+ *                   properties:
+ *                     level:
+ *                       type: string
+ *                       enum: [LOW, MEDIUM, HIGH, CRITICAL]
+ *                     score:
+ *                       type: number
+ *                     factors:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           factor:
+ *                             type: string
+ *                           description:
+ *                             type: string
+ *                           impact:
+ *                             type: string
+ *                             enum: [POSITIVE, NEGATIVE, NEUTRAL]
+ *                           weight:
+ *                             type: number
+ *                 paymentRating:
+ *                   type: object
+ *                   properties:
+ *                     grade:
+ *                       type: string
+ *                       enum: [A, B, C, D, F]
+ *                     description:
+ *                       type: string
+ *       '401':
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       '404':
+ *         $ref: '#/components/responses/NotFoundError'
+ *       '500':
+ *         $ref: '#/components/responses/InternalServerError'
+ */
+router.get(
+    '/:id/full',
+    roleMiddleware(['ADMIN', 'ANALYST', 'MANAGER']),
+    customerController.getCustomerFull,
+);
+
+/**
+ * @openapi
  * /customers/{id}:
  *   get:
  *     tags: [Клиенты]

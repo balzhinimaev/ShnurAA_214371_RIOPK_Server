@@ -40,6 +40,42 @@ class AgingBucketDto {
 }
 
 /**
+ * Сводка по категориям для рекомендаций
+ */
+class RecommendationsCategorySummaryDto {
+    @Expose()
+    count!: number;
+
+    @Expose()
+    totalAmount!: number;
+}
+
+/**
+ * Сводка рекомендаций по категориям для dashboard
+ */
+class RecommendationsSummaryForDashboardDto {
+    @Expose()
+    @Type(() => RecommendationsCategorySummaryDto)
+    NOT_DUE!: RecommendationsCategorySummaryDto;
+
+    @Expose()
+    @Type(() => RecommendationsCategorySummaryDto)
+    NOTIFY!: RecommendationsCategorySummaryDto;
+
+    @Expose()
+    @Type(() => RecommendationsCategorySummaryDto)
+    CLAIM!: RecommendationsCategorySummaryDto;
+
+    @Expose()
+    @Type(() => RecommendationsCategorySummaryDto)
+    COURT!: RecommendationsCategorySummaryDto;
+
+    @Expose()
+    @Type(() => RecommendationsCategorySummaryDto)
+    BAD_DEBT!: RecommendationsCategorySummaryDto;
+}
+
+/**
  * @openapi
  * components:
  *   schemas:
@@ -175,4 +211,8 @@ export class DashboardSummaryDto {
 
     @Expose()
     overduePaymentsPercentage!: number; // Процент просроченных платежей
+
+    @Expose()
+    @Type(() => RecommendationsSummaryForDashboardDto)
+    recommendationsSummary?: RecommendationsSummaryForDashboardDto; // Сводка по категориям рекомендаций
 }

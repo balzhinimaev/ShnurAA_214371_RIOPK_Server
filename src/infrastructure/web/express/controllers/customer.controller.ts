@@ -4,13 +4,14 @@ import { container } from 'tsyringe';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { ListCustomersUseCase } from '../../../../application/use-cases/customers/list-customers.use-case';
-import { GetCustomerByIdUseCase } from '../../../../application/use-cases/customers/get-customer-by-id.use-case'; // Импортируем новый UseCase
+import { GetCustomerByIdUseCase } from '../../../../application/use-cases/customers/get-customer-by-id.use-case';
+import { GetCustomerFullUseCase } from '../../../../application/use-cases/customers/get-customer-full.use-case';
 import { UpdateCustomerUseCase } from '../../../../application/use-cases/customers/update-customer.use-case';
 import { DeleteCustomerUseCase } from '../../../../application/use-cases/customers/delete-customer.use-case';
 import { UpdateCustomerDto } from '../../../../application/dtos/customers/update-customer.dto';
 import { AppError } from '../../../../application/errors/AppError';
-import { FindAllCustomersOptions } from '../../../../domain/repositories/ICustomerRepository'; // Обновленный тип
-import { UserRole } from '../../../../domain/entities/user.entity'; // Предполагаемый тип роли
+import { FindAllCustomersOptions } from '../../../../domain/repositories/ICustomerRepository';
+import { UserRole } from '../../../../domain/entities/user.entity';
 
 export class CustomerController {
     // GET /customers
@@ -204,6 +205,42 @@ export class CustomerController {
             res.status(204).send();
         } catch (error) {
             console.error('[CustomerController] DELETE /customers/:id - Error:', {
+                customerId: req.params.id,
+                error,
+            });
+            next(error);
+        }
+    }
+
+    // GET /customers/:id/full
+    async getCustomerFull(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const customerId = req.params.id;
+            console.log('[CustomerController] GET /customers/:id/full - Request:', {
+                customerId,
+                userId: req.user?.id,
+            });
+
+            const getCustomerFullUseCase = container.resolve(
+                GetCustomerFullUseCase,
+            );
+            const customerFull = await getCustomerFullUseCase.execute(customerId);
+            
+            console.log('[CustomerController] GET /customers/:id/full - Customer found:', {
+                customerId,
+                name: customerFull?.name,
+                invoiceCount: customerFull?.invoices?.length,
+                riskLevel: customerFull?.riskAssessment?.level,
+                paymentGrade: customerFull?.paymentRating?.grade,
+            });
+
+            res.status(200).json(customerFull);
+        } catch (error) {
+            console.error('[CustomerController] GET /customers/:id/full - Error:', {
                 customerId: req.params.id,
                 error,
             });

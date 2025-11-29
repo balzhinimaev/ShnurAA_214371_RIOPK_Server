@@ -110,5 +110,26 @@ export class CustomerResponseDto {
     @Expose()
     riskLevel?: RiskLevel;
 
+    /**
+     * Общая задолженность клиента.
+     * @example 150000.00
+     */
+    @Expose()
+    totalDebt?: number;
+
+    /**
+     * Просроченная задолженность клиента.
+     * @example 50000.00
+     */
+    @Expose()
+    overdueDebt?: number;
+
+    /**
+     * Рейтинг платежеспособности (A-F).
+     * @example "B"
+     */
+    @Expose()
+    paymentRating?: 'A' | 'B' | 'C' | 'D' | 'F';
+
     // Поле userId не включается в ответ API, поэтому для него нет @Expose
 }

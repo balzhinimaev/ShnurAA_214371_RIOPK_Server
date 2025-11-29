@@ -34,5 +34,21 @@ export interface IInvoiceRepository {
 
     getDashboardSummary(currentDate?: Date): Promise<DashboardSummaryData>;
     getAgingReport(buckets: number[], asOfDate?: Date): Promise<AgingBucket[]>;
+    getReceivablesDynamics(
+        startDate: Date,
+        endDate: Date,
+    ): Promise<
+        {
+            period: string;
+            totalDebt: number;
+            overdueDebt: number;
+        }[]
+    >;
+
+    getReceivablesStructure(asOfDate: Date): Promise<{
+        byAgingBucket: { bucket: string; amount: number; count: number; percentage: number }[];
+        byServiceType: { serviceType: string; amount: number; count: number; percentage: number }[];
+        byManager: { manager: string; amount: number; count: number; percentage: number }[];
+    }>;
 }
 export const InvoiceRepositoryToken = Symbol('IInvoiceRepository');

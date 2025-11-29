@@ -73,6 +73,16 @@ export interface CustomerDebtDto {
     oldestDebtDays: number;
 }
 
+// DTO для платежа
+export interface PaymentDto {
+    id: string;
+    amount: number;
+    paymentDate: Date;
+    paymentMethod?: string;
+    isOnTime?: boolean;
+    daysDelay?: number;
+}
+
 // Расширяем базовый интерфейс для ясности
 interface IInvoiceRepositoryExtended extends IInvoiceRepository {
     create(
@@ -107,6 +117,22 @@ interface IInvoiceRepositoryExtended extends IInvoiceRepository {
         customerId?: string,
         contractNumber?: string,
     ): Promise<Invoice[]>;
+    getPaymentsByInvoiceId(invoiceId: string): Promise<PaymentDto[]>;
+    getReceivablesDynamics(
+        startDate: Date,
+        endDate: Date,
+    ): Promise<
+        {
+            period: string;
+            totalDebt: number;
+            overdueDebt: number;
+        }[]
+    >;
+    getReceivablesStructure(asOfDate: Date): Promise<{
+        byAgingBucket: { bucket: string; amount: number; count: number; percentage: number }[];
+        byServiceType: { serviceType: string; amount: number; count: number; percentage: number }[];
+        byManager: { manager: string; amount: number; count: number; percentage: number }[];
+    }>;
 }
 
 @injectable()
@@ -2248,6 +2274,41 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
     }
 
     /**
+     * Получает историю платежей для счета
+     * @param invoiceId - ID счета
+     * @returns Массив платежей
+     */
+    async getPaymentsByInvoiceId(invoiceId: string): Promise<PaymentDto[]> {
+        if (!invoiceId || !invoiceId.match(/^[0-9a-fA-F]{24}$/)) {
+            return [];
+        }
+
+        try {
+            const { PaymentHistoryModel } = await import(
+                '../schemas/payment-history.schema'
+            );
+
+            const payments = await PaymentHistoryModel.find({
+                invoiceId: new Types.ObjectId(invoiceId),
+            })
+                .sort({ paymentDate: -1 })
+                .lean()
+                .exec();
+
+            return payments.map((p: any) => ({
+                id: p._id.toString(),
+                amount: p.amount,
+                paymentDate: p.paymentDate,
+                isOnTime: p.isOnTime,
+                daysDelay: p.daysDelay,
+            }));
+        } catch (error) {
+            console.error(`Error getting payments for invoice ${invoiceId}:`, error);
+            return [];
+        }
+    }
+
+    /**
      * Получает все счета с задолженностью для анализа по договорам
      * @param asOfDate - Дата расчета (используется для расчета просрочки в use case)
      * @param customerId - Фильтр по контрагенту (опционально)
@@ -2339,6 +2400,289 @@ export class MongoInvoiceRepository implements IInvoiceRepositoryExtended {
                 'Ошибка при получении счетов по договорам',
                 500,
             );
+        }
+    }
+
+    /**
+     * Получает динамику дебиторской задолженности по месяцам
+     */
+    async getReceivablesDynamics(
+        startDate: Date,
+        endDate: Date,
+    ): Promise<{ period: string; totalDebt: number; overdueDebt: number }[]> {
+        try {
+            const result: { period: string; totalDebt: number; overdueDebt: number }[] = [];
+            let currentDate = new Date(startDate);
+            // Нормализуем дату до начала месяца
+            currentDate.setDate(1);
+            currentDate.setHours(0, 0, 0, 0);
+
+            // Используем динамический импорт или предполагаем имя коллекции
+            // В Mongoose по умолчанию имя коллекции = lowercase plural от имени модели ('PaymentHistory' -> 'paymenthistories')
+            const paymentCollectionName = 'paymenthistories';
+
+            while (currentDate <= endDate) {
+                // Определяем конец текущего месяца
+                const nextMonth = new Date(currentDate);
+                nextMonth.setMonth(currentDate.getMonth() + 1);
+                const periodEnd = new Date(nextMonth.getTime() - 1); // Конец месяца (последняя миллисекунда)
+
+                // Формируем название периода (YYYY-MM)
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth() + 1;
+                const period = `${year}-${month.toString().padStart(2, '0')}`;
+
+                // Агрегация:
+                // 1. Находим все счета, выставленные ДО конца периода
+                // 2. Для каждого счета находим платежи ДО конца периода
+                // 3. Считаем остаток и статус просрочки на конец периода
+                
+                const aggregationPipeline: any[] = [
+                    {
+                        $match: {
+                            issueDate: { $lte: periodEnd },
+                        },
+                    },
+                    {
+                        $lookup: {
+                            from: paymentCollectionName,
+                            let: { invoiceId: '$_id' },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: {
+                                            $and: [
+                                                { $eq: ['$invoiceId', '$$invoiceId'] },
+                                                { $lte: ['$paymentDate', periodEnd] },
+                                            ],
+                                        },
+                                    },
+                                },
+                                {
+                                    $group: {
+                                        _id: null,
+                                        totalPaid: { $sum: '$amount' },
+                                    },
+                                },
+                            ],
+                            as: 'payments',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            paidAtPeriod: {
+                                $ifNull: [{ $arrayElemAt: ['$payments.totalPaid', 0] }, 0],
+                            },
+                        },
+                    },
+                    {
+                        $addFields: {
+                            outstandingAtPeriod: {
+                                $subtract: ['$totalAmount', '$paidAtPeriod'],
+                            },
+                            isOverdueAtPeriod: {
+                                $cond: {
+                                    if: { $lt: ['$dueDate', periodEnd] },
+                                    then: true,
+                                    else: false,
+                                },
+                            },
+                        },
+                    },
+                    // Учитываем только те, где есть долг > 0.01 (чтобы избежать проблем с плавающей точкой)
+                    {
+                        $match: {
+                            outstandingAtPeriod: { $gt: 0.01 },
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalDebt: { $sum: '$outstandingAtPeriod' },
+                            overdueDebt: {
+                                $sum: {
+                                    $cond: ['$isOverdueAtPeriod', '$outstandingAtPeriod', 0],
+                                },
+                            },
+                        },
+                    },
+                ];
+
+                const periodResult = await InvoiceModel.aggregate(aggregationPipeline).exec();
+                
+                const stats = periodResult.length > 0 ? periodResult[0] : { totalDebt: 0, overdueDebt: 0 };
+
+                result.push({
+                    period,
+                    totalDebt: parseFloat((stats.totalDebt || 0).toFixed(2)),
+                    overdueDebt: parseFloat((stats.overdueDebt || 0).toFixed(2)),
+                });
+
+                currentDate = nextMonth;
+            }
+
+            return result;
+        } catch (error) {
+            console.error('Error getting receivables dynamics:', error);
+            throw new AppError('Ошибка при получении динамики задолженности', 500);
+        }
+    }
+
+    /**
+     * Получает структуру дебиторской задолженности (по срокам, типам услуг, менеджерам)
+     */
+    async getReceivablesStructure(asOfDate: Date): Promise<{
+        byAgingBucket: { bucket: string; amount: number; count: number; percentage: number }[];
+        byServiceType: { serviceType: string; amount: number; count: number; percentage: number }[];
+        byManager: { manager: string; amount: number; count: number; percentage: number }[];
+    }> {
+        try {
+            const pipeline: any[] = [
+                // 1. Фильтр: только неоплаченные и с долгом > 0
+                {
+                    $match: {
+                        status: { $ne: 'PAID' },
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                        isOverdue: {
+                            $lt: ['$dueDate', asOfDate],
+                        },
+                        daysOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: {
+                                    $dateDiff: {
+                                        startDate: '$dueDate',
+                                        endDate: asOfDate,
+                                        unit: 'day',
+                                    },
+                                },
+                                else: 0,
+                            },
+                        },
+                    },
+                },
+                {
+                    $match: {
+                        outstandingAmount: { $gt: 0.01 },
+                    },
+                },
+                // 2. Определяем бакеты
+                {
+                    $addFields: {
+                        agingBucket: {
+                            $switch: {
+                                branches: [
+                                    {
+                                        case: { $not: '$isOverdue' },
+                                        then: 'Current',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 30] },
+                                        then: '1-30',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 60] },
+                                        then: '31-60',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 90] },
+                                        then: '61-90',
+                                    },
+                                    {
+                                        case: { $gt: ['$daysOverdue', 90] },
+                                        then: '91+',
+                                    },
+                                ],
+                                default: 'Current',
+                            },
+                        },
+                    },
+                },
+                // 3. Facet для разных группировок
+                {
+                    $facet: {
+                        byAgingBucket: [
+                            {
+                                $group: {
+                                    _id: '$agingBucket',
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        byServiceType: [
+                            {
+                                $group: {
+                                    _id: { $ifNull: ['$serviceType', 'Other'] },
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        byManager: [
+                            {
+                                $group: {
+                                    _id: { $ifNull: ['$manager', 'Unassigned'] },
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        total: [
+                            {
+                                $group: {
+                                    _id: null,
+                                    totalAmount: { $sum: '$outstandingAmount' },
+                                },
+                            },
+                        ],
+                    },
+                },
+            ];
+
+            const result = await InvoiceModel.aggregate(pipeline).exec();
+            
+            if (!result.length) {
+                return {
+                    byAgingBucket: [],
+                    byServiceType: [],
+                    byManager: [],
+                };
+            }
+
+            const data = result[0];
+            const totalAmount = data.total.length > 0 ? data.total[0].totalAmount : 0;
+
+            const processGroup = (groupData: any[], keyName: string) => {
+                return groupData.map((item: any) => ({
+                    [keyName]: item._id,
+                    amount: parseFloat(item.amount.toFixed(2)),
+                    count: item.count,
+                    percentage: totalAmount > 0 ? parseFloat(((item.amount / totalAmount) * 100).toFixed(2)) : 0,
+                }));
+            };
+
+            // Сортировка бакетов
+            const bucketOrder = ['Current', '1-30', '31-60', '61-90', '91+'];
+            const byAgingBucket = processGroup(data.byAgingBucket, 'bucket').sort((a: any, b: any) => {
+                return bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket);
+            });
+
+            return {
+                byAgingBucket: byAgingBucket as any,
+                byServiceType: processGroup(data.byServiceType, 'serviceType').sort((a: any, b: any) => b.amount - a.amount) as any,
+                byManager: processGroup(data.byManager, 'manager').sort((a: any, b: any) => b.amount - a.amount) as any,
+            };
+
+        } catch (error) {
+            console.error('Error getting receivables structure:', error);
+            throw new AppError('Ошибка при получении структуры задолженности', 500);
         }
     }
 }

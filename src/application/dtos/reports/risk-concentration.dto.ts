@@ -31,6 +31,12 @@ export class RiskConcentrationCustomerDto {
      */
     @Expose()
     percentageOfTotal!: number;
+
+    /**
+     * Удельный вес просроченной задолженности контрагента в процентах от общей суммы просроченной ДЗ
+     */
+    @Expose()
+    percentageOfOverdue!: number;
 }
 
 /**
@@ -45,6 +51,7 @@ export class RiskConcentrationDto {
     summary!: {
         totalCustomers: number; // Общее количество контрагентов с задолженностью
         totalDebt: number; // Общая сумма задолженности
+        totalOverdueDebt: number; // Общая сумма просроченной задолженности
         asOfDate: Date; // Дата расчета
         maxConcentration: number; // Максимальная концентрация (процент самого крупного должника)
         top5Concentration: number; // Концентрация топ-5 должников (%)

@@ -1,4 +1,3 @@
-// src/application/use-cases/reports/get-risk-concentration.use-case.ts
 import { injectable, inject } from 'tsyringe';
 import {
     IInvoiceRepository,
@@ -53,22 +52,32 @@ export class GetRiskConcentrationUseCase {
             return this.createEmptyResult(asOfDate);
         }
 
-        // Рассчитываем общую сумму задолженности
+        // Рассчитываем общую сумму задолженности и просроченной задолженности
         const totalDebt = customers.reduce(
             (sum, customer) => sum + customer.totalDebt,
             0,
         );
+        const totalOverdueDebt = customers.reduce(
+            (sum, customer) => sum + customer.overdueDebt,
+            0,
+        );
 
-        // Рассчитываем процент от общей суммы для каждого контрагента
+        // Рассчитываем проценты для каждого контрагента
         const customersWithPercentage = customers.map((customer) => {
             const percentageOfTotal =
                 totalDebt > 0
                     ? Math.round((customer.totalDebt / totalDebt) * 100 * 100) /
                       100
                     : 0;
+            const percentageOfOverdue =
+                totalOverdueDebt > 0
+                    ? Math.round((customer.overdueDebt / totalOverdueDebt) * 100 * 100) /
+                      100
+                    : 0;
             return {
                 ...customer,
                 percentageOfTotal,
+                percentageOfOverdue,
             };
         });
 
@@ -108,6 +117,7 @@ export class GetRiskConcentrationUseCase {
             summary: {
                 totalCustomers: customers.length,
                 totalDebt: Math.round(totalDebt * 100) / 100,
+                totalOverdueDebt: Math.round(totalOverdueDebt * 100) / 100,
                 asOfDate,
                 maxConcentration: Math.round(maxConcentration * 100) / 100,
                 top5Concentration: Math.round(top5Concentration * 100) / 100,
@@ -131,6 +141,7 @@ export class GetRiskConcentrationUseCase {
                 summary: {
                     totalCustomers: 0,
                     totalDebt: 0,
+                    totalOverdueDebt: 0,
                     asOfDate,
                     maxConcentration: 0,
                     top5Concentration: 0,
@@ -141,4 +152,3 @@ export class GetRiskConcentrationUseCase {
         );
     }
 }
-

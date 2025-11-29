@@ -9,7 +9,14 @@ import { GetCustomersOverdueUseCase } from '../../../../application/use-cases/re
 import { GetAbcAnalysisUseCase } from '../../../../application/use-cases/reports/get-abc-analysis.use-case';
 import { GetRiskConcentrationUseCase } from '../../../../application/use-cases/reports/get-risk-concentration.use-case';
 import { GetContractAnalysisUseCase } from '../../../../application/use-cases/reports/get-contract-analysis.use-case';
+import { GetRecommendationsUseCase } from '../../../../application/use-cases/reports/get-recommendations.use-case';
+import { GetInvoiceDetailsUseCase } from '../../../../application/use-cases/reports/get-invoice-details.use-case';
+import { GetReceivablesDynamicsUseCase } from '../../../../application/use-cases/reports/get-receivables-dynamics.use-case';
+import { GetReceivablesStructureUseCase } from '../../../../application/use-cases/reports/get-receivables-structure.use-case';
+import { GetSummaryReportUseCase } from '../../../../application/use-cases/reports/get-summary-report.use-case';
 import { AgingBucket } from '../../../../application/dtos/reports/customers-overdue-filters.dto';
+import { getOverdueCategory, getRecommendation } from '../../../../domain/enums/overdue-category.enum';
+import { getDueStatus, getDaysUntilDue } from '../../../../domain/types/payment.types';
 
 export class ReportController {
     async getDashboardSummary(
@@ -97,6 +104,40 @@ export class ReportController {
                 sortOrder,
             });
 
+            const currentDate = new Date();
+
+            // Расширяем счета новыми полями
+            const enrichedInvoices = result.invoices.map((invoice: any) => {
+                const invoiceJson = invoice.toJSON();
+                
+                // Вычисляем дни просрочки (положительное = просрочка)
+                const dueDate = new Date(invoice.dueDate);
+                const diffMs = currentDate.getTime() - dueDate.getTime();
+                const daysOverdue = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                
+                // Вычисляем дни до срока (положительное = до срока, отрицательное = просрочка)
+                const daysUntilDue = getDaysUntilDue(dueDate, currentDate);
+                
+                // Определяем статус срока
+                const dueStatus = getDueStatus(dueDate, currentDate);
+                
+                // Определяем категорию просрочки и рекомендацию
+                const overdueCategory = getOverdueCategory(daysOverdue);
+                const recommendation = getRecommendation(overdueCategory);
+
+                return {
+                    ...invoiceJson,
+                    daysOverdue,
+                    daysUntilDue,
+                    dueStatus,
+                    overdueCategory,
+                    recommendation,
+                    // TODO: добавить payments и lastPaymentDate когда будет реализован запрос к PaymentHistory
+                    payments: [],
+                    lastPaymentDate: invoice.actualPaymentDate || null,
+                };
+            });
+
             // Логирование для отладки структуры данных
             if (result.invoices.length > 0) {
                 const firstInvoice = result.invoices[0];
@@ -116,7 +157,12 @@ export class ReportController {
                 console.log('========================');
             }
 
-            res.status(200).json(result);
+            res.status(200).json({
+                invoices: enrichedInvoices,
+                total: result.total,
+                limit: result.limit,
+                offset: result.offset,
+            });
         } catch (error) {
             next(error);
         }
@@ -335,6 +381,120 @@ export class ReportController {
                 contractNumber,
                 includePaid,
             });
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * GET /reports/recommendations
+     * Получение сводки рекомендаций по всем счетам
+     */
+    async getRecommendations(
+        _req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getRecommendationsUseCase = container.resolve(
+                GetRecommendationsUseCase,
+            );
+
+            const result = await getRecommendationsUseCase.execute();
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * GET /reports/invoices/:id
+     * Получение детальной информации о счете с историей платежей
+     */
+    async getInvoiceDetails(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const invoiceId = req.params.id;
+            
+            const getInvoiceDetailsUseCase = container.resolve(
+                GetInvoiceDetailsUseCase,
+            );
+
+            const result = await getInvoiceDetailsUseCase.execute(invoiceId);
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getReceivablesDynamics(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getReceivablesDynamicsUseCase = container.resolve(
+                GetReceivablesDynamicsUseCase,
+            );
+
+            const startDate = req.query.startDate
+                ? new Date(req.query.startDate as string)
+                : undefined;
+            const endDate = req.query.endDate
+                ? new Date(req.query.endDate as string)
+                : undefined;
+
+            const result = await getReceivablesDynamicsUseCase.execute({
+                startDate,
+                endDate,
+            });
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getReceivablesStructure(
+        req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getReceivablesStructureUseCase = container.resolve(
+                GetReceivablesStructureUseCase,
+            );
+
+            const asOfDate = req.query.asOfDate
+                ? new Date(req.query.asOfDate as string)
+                : undefined;
+
+            const result = await getReceivablesStructureUseCase.execute(asOfDate);
+
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getSummaryReport(
+        _req: Request,
+        res: Response,
+        next: NextFunction,
+    ): Promise<void> {
+        try {
+            const getSummaryReportUseCase = container.resolve(
+                GetSummaryReportUseCase,
+            );
+
+            const result = await getSummaryReportUseCase.execute();
 
             res.status(200).json(result);
         } catch (error) {
