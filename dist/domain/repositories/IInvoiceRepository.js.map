@@ -1,1 +1,1 @@
-{"version":3,"file":"IInvoiceRepository.js","sourceRoot":"","sources":["../../../src/domain/repositories/IInvoiceRepository.ts"],"names":[],"mappings":";;;AAqCa,QAAA,sBAAsB,GAAG,MAAM,CAAC,oBAAoB,CAAC,CAAC"}
+{"version":3,"file":"IInvoiceRepository.js","sourceRoot":"","sources":["../../../src/domain/repositories/IInvoiceRepository.ts"],"names":[],"mappings":";;;AAqDa,QAAA,sBAAsB,GAAG,MAAM,CAAC,oBAAoB,CAAC,CAAC"}

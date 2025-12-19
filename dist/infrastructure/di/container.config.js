@@ -44,6 +44,14 @@ const process_invoice_upload_use_case_1 = require("../../application/use-cases/d
 const process_1c_invoice_upload_use_case_1 = require("../../application/use-cases/data-uploads/process-1c-invoice-upload.use-case");
 const create_debt_work_record_use_case_1 = require("../../application/use-cases/customers/create-debt-work-record.use-case");
 const get_debt_work_history_use_case_1 = require("../../application/use-cases/customers/get-debt-work-history.use-case");
+const update_debt_work_record_use_case_1 = require("../../application/use-cases/customers/update-debt-work-record.use-case");
+const delete_debt_work_record_use_case_1 = require("../../application/use-cases/customers/delete-debt-work-record.use-case");
+const get_customer_full_use_case_1 = require("../../application/use-cases/customers/get-customer-full.use-case");
+const get_recommendations_use_case_1 = require("../../application/use-cases/reports/get-recommendations.use-case");
+const get_invoice_details_use_case_1 = require("../../application/use-cases/reports/get-invoice-details.use-case");
+const get_receivables_dynamics_use_case_1 = require("../../application/use-cases/reports/get-receivables-dynamics.use-case");
+const get_receivables_structure_use_case_1 = require("../../application/use-cases/reports/get-receivables-structure.use-case");
+const get_summary_report_use_case_1 = require("../../application/use-cases/reports/get-summary-report.use-case");
 // --- РЕГИСТРАЦИЯ ЗАВИСИМОСТЕЙ ---
 // 1. Базовые сервисы и конфигурация инфраструктуры
 // Регистрируем ДЕФОЛТНОЕ соединение Mongoose под специальным токеном.
@@ -121,6 +129,30 @@ tsyringe_1.container.register(create_debt_work_record_use_case_1.CreateDebtWorkR
 });
 tsyringe_1.container.register(get_debt_work_history_use_case_1.GetDebtWorkHistoryUseCase, {
     useClass: get_debt_work_history_use_case_1.GetDebtWorkHistoryUseCase,
+});
+tsyringe_1.container.register(update_debt_work_record_use_case_1.UpdateDebtWorkRecordUseCase, {
+    useClass: update_debt_work_record_use_case_1.UpdateDebtWorkRecordUseCase,
+});
+tsyringe_1.container.register(delete_debt_work_record_use_case_1.DeleteDebtWorkRecordUseCase, {
+    useClass: delete_debt_work_record_use_case_1.DeleteDebtWorkRecordUseCase,
+});
+tsyringe_1.container.register(get_customer_full_use_case_1.GetCustomerFullUseCase, {
+    useClass: get_customer_full_use_case_1.GetCustomerFullUseCase,
+});
+tsyringe_1.container.register(get_recommendations_use_case_1.GetRecommendationsUseCase, {
+    useClass: get_recommendations_use_case_1.GetRecommendationsUseCase,
+});
+tsyringe_1.container.register(get_invoice_details_use_case_1.GetInvoiceDetailsUseCase, {
+    useClass: get_invoice_details_use_case_1.GetInvoiceDetailsUseCase,
+});
+tsyringe_1.container.register(get_receivables_dynamics_use_case_1.GetReceivablesDynamicsUseCase, {
+    useClass: get_receivables_dynamics_use_case_1.GetReceivablesDynamicsUseCase,
+});
+tsyringe_1.container.register(get_receivables_structure_use_case_1.GetReceivablesStructureUseCase, {
+    useClass: get_receivables_structure_use_case_1.GetReceivablesStructureUseCase,
+});
+tsyringe_1.container.register(get_summary_report_use_case_1.GetSummaryReportUseCase, {
+    useClass: get_summary_report_use_case_1.GetSummaryReportUseCase,
 });
 // --- Регистрация Controllers ---
 // Обычно контроллеры не регистрируют явно, если они не внедряются куда-то еще.

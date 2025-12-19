@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerResponseDto = void 0;
 // src/application/dtos/customers/customer-response.dto.ts
 const class_transformer_1 = require("class-transformer");
+const risk_level_enum_1 = require("../../../domain/enums/risk-level.enum");
 /**
  * @openapi
  * components:
@@ -48,6 +49,17 @@ const class_transformer_1 = require("class-transformer");
  *           format: date-time
  *           description: Дата и время последнего обновления записи клиента.
  *           example: "2024-01-15T14:30:00.000Z"
+ *         riskScore:
+ *           type: number
+ *           nullable: true
+ *           description: Оценка рисковости клиента (0-100). Рассчитывается на основе истории работы с задолженностью.
+ *           example: 45
+ *         riskLevel:
+ *           type: string
+ *           nullable: true
+ *           enum: [LOW, MEDIUM, HIGH, CRITICAL]
+ *           description: Уровень риска клиента на основе riskScore.
+ *           example: "MEDIUM"
  *       required:
  *         - id
  *         - name
@@ -114,6 +126,56 @@ class CustomerResponseDto {
             writable: true,
             value: void 0
         });
+        /**
+         * Оценка рисковости клиента (0-100). Рассчитывается на основе истории работы с задолженностью.
+         * @example 45
+         */
+        Object.defineProperty(this, "riskScore", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        /**
+         * Уровень риска клиента на основе riskScore.
+         * @example "MEDIUM"
+         */
+        Object.defineProperty(this, "riskLevel", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        /**
+         * Общая задолженность клиента.
+         * @example 150000.00
+         */
+        Object.defineProperty(this, "totalDebt", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        /**
+         * Просроченная задолженность клиента.
+         * @example 50000.00
+         */
+        Object.defineProperty(this, "overdueDebt", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        /**
+         * Рейтинг платежеспособности (A-F).
+         * @example "B"
+         */
+        Object.defineProperty(this, "paymentRating", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         // Поле userId не включается в ответ API, поэтому для него нет @Expose
     }
 }
@@ -142,4 +204,24 @@ __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", Date)
 ], CustomerResponseDto.prototype, "updatedAt", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], CustomerResponseDto.prototype, "riskScore", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", String)
+], CustomerResponseDto.prototype, "riskLevel", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], CustomerResponseDto.prototype, "totalDebt", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], CustomerResponseDto.prototype, "overdueDebt", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", String)
+], CustomerResponseDto.prototype, "paymentRating", void 0);
 //# sourceMappingURL=customer-response.dto.js.map

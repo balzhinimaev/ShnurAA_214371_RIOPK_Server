@@ -1258,6 +1258,15 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
     async getCustomersWithOverdue(options, asOfDate = new Date()) {
         try {
             const { filters = {}, limit = 50, offset = 0, sortBy = 'overdueAmount', sortOrder = 'desc', } = options;
+            console.log('[getCustomersWithOverdue] === START ===');
+            console.log('[getCustomersWithOverdue] Input parameters:', {
+                filters: JSON.stringify(filters),
+                limit,
+                offset,
+                sortBy,
+                sortOrder,
+                asOfDate: asOfDate.toISOString(),
+            });
             const pipeline = [
                 // Берем только неоплаченные счета
                 { $match: { status: { $ne: 'PAID' } } },
@@ -1358,6 +1367,12 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 matchFilters.daysOverdue = matchFilters.daysOverdue || {};
                 matchFilters.daysOverdue.$gt = 0;
             }
+            console.log('[getCustomersWithOverdue] Invoice-level filters:', {
+                includeCurrent: filters.includeCurrent,
+                agingBucket: filters.agingBucket,
+                matchFilters: JSON.stringify(matchFilters),
+                willExcludeCurrent: !filters.includeCurrent && filters.agingBucket !== customers_overdue_filters_dto_1.AgingBucket.CURRENT,
+            });
             if (Object.keys(matchFilters).length > 0) {
                 pipeline.push({ $match: matchFilters });
             }
@@ -1440,13 +1455,34 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 });
             }
             // Определяем aging bucket клиента по самой старой просрочке
+            // CURRENT: клиенты без просрочки (oldestDebtDays <= 0 или overdueDebt = 0)
+            console.log('[getCustomersWithOverdue] Computing customer agingBucket based on oldestDebtDays and overdueDebt');
+            // Добавляем временное поле для отладки перед вычислением agingBucket
+            pipeline.push({
+                $addFields: {
+                    _debugBeforeAgingBucket: {
+                        oldestDebtDays: '$oldestDebtDays',
+                        overdueDebt: '$overdueDebt',
+                        totalDebt: '$totalDebt',
+                        currentDebt: '$currentDebt',
+                        overdueInvoiceCount: '$overdueInvoiceCount',
+                        invoiceCount: '$invoiceCount',
+                    },
+                },
+            });
             pipeline.push({
                 $addFields: {
                     agingBucket: {
                         $switch: {
                             branches: [
                                 {
-                                    case: { $eq: ['$oldestDebtDays', 0] },
+                                    // CURRENT: нет просрочки (oldestDebtDays <= 0 или overdueDebt = 0)
+                                    case: {
+                                        $or: [
+                                            { $lte: ['$oldestDebtDays', 0] },
+                                            { $eq: ['$overdueDebt', 0] },
+                                        ],
+                                    },
                                     then: 'CURRENT',
                                 },
                                 {
@@ -1486,13 +1522,96 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     },
                 },
             });
+            // Временный pipeline для отладки - получаем данные после вычисления agingBucket, но до фильтрации
+            const debugPipelineBeforeFilter = [...pipeline];
+            debugPipelineBeforeFilter.push({
+                $project: {
+                    _id: 1,
+                    customerId: { $toString: '$_id' },
+                    oldestDebtDays: 1,
+                    overdueDebt: 1,
+                    totalDebt: 1,
+                    currentDebt: 1,
+                    agingBucket: 1,
+                    overdueInvoiceCount: 1,
+                    invoiceCount: 1,
+                    _debugBeforeAgingBucket: 1,
+                },
+            });
+            const debugResult = await invoice_schema_1.InvoiceModel.aggregate(debugPipelineBeforeFilter).exec();
+            console.log('[getCustomersWithOverdue] Customers after agingBucket computation (before filter):', {
+                count: debugResult.length,
+                customers: debugResult.slice(0, 5).map((c) => ({
+                    customerId: c.customerId,
+                    oldestDebtDays: c.oldestDebtDays,
+                    overdueDebt: c.overdueDebt,
+                    totalDebt: c.totalDebt,
+                    currentDebt: c.currentDebt,
+                    agingBucket: c.agingBucket,
+                    overdueInvoiceCount: c.overdueInvoiceCount,
+                    invoiceCount: c.invoiceCount,
+                    debug: c._debugBeforeAgingBucket,
+                })),
+            });
             // Фильтр по aging bucket для клиентов (применяется ПОСЛЕ вычисления agingBucket клиента)
             // Если не указаны minDaysOverdue/maxDaysOverdue
             if (filters.agingBucket &&
                 !filters.minDaysOverdue &&
                 !filters.maxDaysOverdue) {
-                pipeline.push({
-                    $match: { agingBucket: filters.agingBucket },
+                console.log('[getCustomersWithOverdue] Applying customer-level agingBucket filter:', {
+                    agingBucket: filters.agingBucket,
+                    agingBucketType: typeof filters.agingBucket,
+                    agingBucketValue: String(filters.agingBucket),
+                });
+                // Для CURRENT bucket фильтруем клиентов, у которых есть не просроченные счета (currentDebt > 0)
+                if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.CURRENT) {
+                    console.log('[getCustomersWithOverdue] Using CURRENT bucket filter: currentDebt > 0');
+                    pipeline.push({
+                        $match: {
+                            currentDebt: { $gt: 0 }
+                        },
+                    });
+                }
+                else {
+                    // Для остальных bucket фильтруем по наличию задолженности в соответствующем диапазоне
+                    // Это позволяет показывать клиентов, у которых есть счета в нужном диапазоне,
+                    // даже если у них есть более старые просрочки
+                    const filterValue = String(filters.agingBucket);
+                    console.log('[getCustomersWithOverdue] Using agingBucket filter by breakdown:', filterValue);
+                    let breakdownField;
+                    if (filterValue === '1_30') {
+                        breakdownField = 'days_1_30';
+                    }
+                    else if (filterValue === '31_60') {
+                        breakdownField = 'days_31_60';
+                    }
+                    else if (filterValue === '61_90') {
+                        breakdownField = 'days_61_90';
+                    }
+                    else if (filterValue === '91_PLUS') {
+                        breakdownField = 'days_91_plus';
+                    }
+                    else {
+                        // Fallback на стандартный фильтр
+                        breakdownField = '';
+                    }
+                    if (breakdownField) {
+                        pipeline.push({
+                            $match: { [breakdownField]: { $gt: 0 } },
+                        });
+                    }
+                    else {
+                        pipeline.push({
+                            $match: { agingBucket: filterValue },
+                        });
+                    }
+                }
+            }
+            else {
+                console.log('[getCustomersWithOverdue] Skipping customer-level agingBucket filter:', {
+                    hasAgingBucket: !!filters.agingBucket,
+                    hasMinDaysOverdue: !!filters.minDaysOverdue,
+                    hasMaxDaysOverdue: !!filters.maxDaysOverdue,
                 });
             }
             // Подтягиваем данные о клиенте
@@ -1513,6 +1632,7 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
             const countPipeline = [...pipeline, { $count: 'total' }];
             const countResult = await invoice_schema_1.InvoiceModel.aggregate(countPipeline).exec();
             const total = countResult.length > 0 ? countResult[0].total : 0;
+            console.log('[getCustomersWithOverdue] Total customers before pagination:', total);
             // Определяем поле для сортировки
             let sortField = 'overdueDebt';
             if (sortBy === 'totalDebt')
@@ -1553,7 +1673,18 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                 },
             });
             const customers = (await invoice_schema_1.InvoiceModel.aggregate(pipeline).exec());
-            // Вычисляем summary
+            console.log('[getCustomersWithOverdue] Found customers:', {
+                count: customers.length,
+                sample: customers.slice(0, 3).map((c) => ({
+                    customerId: c.customerId,
+                    customerName: c.customerName,
+                    agingBucket: c.agingBucket,
+                    overdueDebt: c.overdueDebt,
+                    oldestDebtDays: c.oldestDebtDays,
+                })),
+            });
+            // Вычисляем summary с учетом фильтров по agingBucket
+            // Summary должен показывать статистику только по счетам/клиентам, соответствующим выбранному bucket
             const summaryPipeline = [
                 { $match: { status: { $ne: 'PAID' } } },
                 {
@@ -1583,18 +1714,149 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                         },
                     },
                 },
-                { $match: { outstandingAmount: { $gt: 0 }, isOverdue: true } },
-                {
-                    $group: {
-                        _id: null,
-                        totalOverdueAmount: { $sum: '$outstandingAmount' },
-                        totalDaysOverdue: { $sum: '$daysOverdue' },
-                        count: { $sum: 1 },
-                        uniqueCustomers: { $addToSet: '$customerId' },
+                { $match: { outstandingAmount: { $gt: 0 } } },
+            ];
+            // Применяем фильтры по agingBucket для summary
+            if (filters.agingBucket) {
+                if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.CURRENT) {
+                    // CURRENT: только не просроченные счета
+                    summaryPipeline.push({
+                        $match: { isOverdue: false },
+                    });
+                }
+                else if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.DAYS_1_30) {
+                    // 1_30: просрочка от 1 до 30 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 1, $lte: 30 },
+                        },
+                    });
+                }
+                else if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.DAYS_31_60) {
+                    // 31_60: просрочка от 31 до 60 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 31, $lte: 60 },
+                        },
+                    });
+                }
+                else if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.DAYS_61_90) {
+                    // 61_90: просрочка от 61 до 90 дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 61, $lte: 90 },
+                        },
+                    });
+                }
+                else if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.DAYS_91_PLUS) {
+                    // 91_PLUS: просрочка 91+ дней
+                    summaryPipeline.push({
+                        $match: {
+                            isOverdue: true,
+                            daysOverdue: { $gte: 91 },
+                        },
+                    });
+                }
+            }
+            else if (!filters.includeCurrent) {
+                // Если не указан bucket и не включен CURRENT, показываем только просроченные
+                summaryPipeline.push({
+                    $match: { isOverdue: true },
+                });
+            }
+            // Группируем по клиентам для определения agingBucket клиента
+            summaryPipeline.push({
+                $group: {
+                    _id: '$customerId',
+                    totalAmount: { $sum: '$outstandingAmount' },
+                    maxDaysOverdue: { $max: '$daysOverdue' },
+                    hasOverdue: { $max: { $cond: ['$isOverdue', 1, 0] } },
+                },
+            });
+            // Определяем agingBucket клиента (та же логика, что и в основном pipeline)
+            summaryPipeline.push({
+                $addFields: {
+                    customerAgingBucket: {
+                        $switch: {
+                            branches: [
+                                {
+                                    case: {
+                                        $or: [
+                                            { $lte: ['$maxDaysOverdue', 0] },
+                                            { $eq: ['$hasOverdue', 0] },
+                                        ],
+                                    },
+                                    then: 'CURRENT',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 1] },
+                                            { $lte: ['$maxDaysOverdue', 30] },
+                                        ],
+                                    },
+                                    then: '1_30',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 31] },
+                                            { $lte: ['$maxDaysOverdue', 60] },
+                                        ],
+                                    },
+                                    then: '31_60',
+                                },
+                                {
+                                    case: {
+                                        $and: [
+                                            { $gte: ['$maxDaysOverdue', 61] },
+                                            { $lte: ['$maxDaysOverdue', 90] },
+                                        ],
+                                    },
+                                    then: '61_90',
+                                },
+                                {
+                                    case: { $gte: ['$maxDaysOverdue', 91] },
+                                    then: '91_PLUS',
+                                },
+                            ],
+                            default: 'CURRENT',
+                        },
                     },
                 },
-            ];
+            });
+            // Для CURRENT bucket фильтруем по currentDebt клиента, для остальных - по agingBucket клиента
+            if (filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.CURRENT) {
+                // Для CURRENT: берем всех клиентов с не просроченными счетами
+                // (уже отфильтровано выше по isOverdue: false)
+            }
+            else if (filters.agingBucket) {
+                // Для остальных bucket: фильтруем клиентов по их agingBucket
+                const bucketFilterValue = String(filters.agingBucket);
+                console.log('[getCustomersWithOverdue] Summary: filtering customers by customerAgingBucket:', bucketFilterValue);
+                summaryPipeline.push({
+                    $match: { customerAgingBucket: bucketFilterValue },
+                });
+            }
+            // Финальная группировка для summary
+            summaryPipeline.push({
+                $group: {
+                    _id: null,
+                    totalOverdueAmount: { $sum: '$totalAmount' },
+                    totalDaysOverdue: { $sum: '$maxDaysOverdue' },
+                    count: { $sum: 1 },
+                    uniqueCustomers: { $addToSet: '$_id' },
+                },
+            });
             const summaryResult = await invoice_schema_1.InvoiceModel.aggregate(summaryPipeline).exec();
+            console.log('[getCustomersWithOverdue] Summary pipeline result:', {
+                resultCount: summaryResult.length,
+                rawResult: summaryResult[0] || null,
+                isCurrentBucket: filters.agingBucket === customers_overdue_filters_dto_1.AgingBucket.CURRENT,
+            });
             const summary = summaryResult.length > 0
                 ? {
                     totalOverdueAmount: Math.round(summaryResult[0].totalOverdueAmount * 100) / 100,
@@ -1608,6 +1870,14 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
                     totalCustomers: 0,
                     averageDaysOverdue: 0,
                 };
+            console.log('[getCustomersWithOverdue] Final result:', {
+                customersCount: customers.length,
+                total,
+                limit,
+                offset,
+                summary,
+            });
+            console.log('[getCustomersWithOverdue] === END ===');
             return {
                 customers,
                 total,
@@ -1619,6 +1889,36 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
         catch (error) {
             console.error('Error getting customers with overdue:', error);
             throw new AppError_1.AppError('Ошибка при получении клиентов с просрочкой', 500);
+        }
+    }
+    /**
+     * Получает историю платежей для счета
+     * @param invoiceId - ID счета
+     * @returns Массив платежей
+     */
+    async getPaymentsByInvoiceId(invoiceId) {
+        if (!invoiceId || !invoiceId.match(/^[0-9a-fA-F]{24}$/)) {
+            return [];
+        }
+        try {
+            const { PaymentHistoryModel } = await Promise.resolve().then(() => __importStar(require('../schemas/payment-history.schema')));
+            const payments = await PaymentHistoryModel.find({
+                invoiceId: new mongoose_1.Types.ObjectId(invoiceId),
+            })
+                .sort({ paymentDate: -1 })
+                .lean()
+                .exec();
+            return payments.map((p) => ({
+                id: p._id.toString(),
+                amount: p.amount,
+                paymentDate: p.paymentDate,
+                isOnTime: p.isOnTime,
+                daysDelay: p.daysDelay,
+            }));
+        }
+        catch (error) {
+            console.error(`Error getting payments for invoice ${invoiceId}:`, error);
+            return [];
         }
     }
     /**
@@ -1701,6 +2001,265 @@ let MongoInvoiceRepository = class MongoInvoiceRepository {
         catch (error) {
             console.error('Error getting invoices by contract:', error);
             throw new AppError_1.AppError('Ошибка при получении счетов по договорам', 500);
+        }
+    }
+    /**
+     * Получает динамику дебиторской задолженности по месяцам
+     */
+    async getReceivablesDynamics(startDate, endDate) {
+        try {
+            const result = [];
+            let currentDate = new Date(startDate);
+            // Нормализуем дату до начала месяца
+            currentDate.setDate(1);
+            currentDate.setHours(0, 0, 0, 0);
+            // Используем динамический импорт или предполагаем имя коллекции
+            // В Mongoose по умолчанию имя коллекции = lowercase plural от имени модели ('PaymentHistory' -> 'paymenthistories')
+            const paymentCollectionName = 'paymenthistories';
+            while (currentDate <= endDate) {
+                // Определяем конец текущего месяца
+                const nextMonth = new Date(currentDate);
+                nextMonth.setMonth(currentDate.getMonth() + 1);
+                const periodEnd = new Date(nextMonth.getTime() - 1); // Конец месяца (последняя миллисекунда)
+                // Формируем название периода (YYYY-MM)
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth() + 1;
+                const period = `${year}-${month.toString().padStart(2, '0')}`;
+                // Агрегация:
+                // 1. Находим все счета, выставленные ДО конца периода
+                // 2. Для каждого счета находим платежи ДО конца периода
+                // 3. Считаем остаток и статус просрочки на конец периода
+                const aggregationPipeline = [
+                    {
+                        $match: {
+                            issueDate: { $lte: periodEnd },
+                        },
+                    },
+                    {
+                        $lookup: {
+                            from: paymentCollectionName,
+                            let: { invoiceId: '$_id' },
+                            pipeline: [
+                                {
+                                    $match: {
+                                        $expr: {
+                                            $and: [
+                                                { $eq: ['$invoiceId', '$$invoiceId'] },
+                                                { $lte: ['$paymentDate', periodEnd] },
+                                            ],
+                                        },
+                                    },
+                                },
+                                {
+                                    $group: {
+                                        _id: null,
+                                        totalPaid: { $sum: '$amount' },
+                                    },
+                                },
+                            ],
+                            as: 'payments',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            paidAtPeriod: {
+                                $ifNull: [{ $arrayElemAt: ['$payments.totalPaid', 0] }, 0],
+                            },
+                        },
+                    },
+                    {
+                        $addFields: {
+                            outstandingAtPeriod: {
+                                $subtract: ['$totalAmount', '$paidAtPeriod'],
+                            },
+                            isOverdueAtPeriod: {
+                                $cond: {
+                                    if: { $lt: ['$dueDate', periodEnd] },
+                                    then: true,
+                                    else: false,
+                                },
+                            },
+                        },
+                    },
+                    // Учитываем только те, где есть долг > 0.01 (чтобы избежать проблем с плавающей точкой)
+                    {
+                        $match: {
+                            outstandingAtPeriod: { $gt: 0.01 },
+                        },
+                    },
+                    {
+                        $group: {
+                            _id: null,
+                            totalDebt: { $sum: '$outstandingAtPeriod' },
+                            overdueDebt: {
+                                $sum: {
+                                    $cond: ['$isOverdueAtPeriod', '$outstandingAtPeriod', 0],
+                                },
+                            },
+                        },
+                    },
+                ];
+                const periodResult = await invoice_schema_1.InvoiceModel.aggregate(aggregationPipeline).exec();
+                const stats = periodResult.length > 0 ? periodResult[0] : { totalDebt: 0, overdueDebt: 0 };
+                result.push({
+                    period,
+                    totalDebt: parseFloat((stats.totalDebt || 0).toFixed(2)),
+                    overdueDebt: parseFloat((stats.overdueDebt || 0).toFixed(2)),
+                });
+                currentDate = nextMonth;
+            }
+            return result;
+        }
+        catch (error) {
+            console.error('Error getting receivables dynamics:', error);
+            throw new AppError_1.AppError('Ошибка при получении динамики задолженности', 500);
+        }
+    }
+    /**
+     * Получает структуру дебиторской задолженности (по срокам, типам услуг, менеджерам)
+     */
+    async getReceivablesStructure(asOfDate) {
+        try {
+            const pipeline = [
+                // 1. Фильтр: только неоплаченные и с долгом > 0
+                {
+                    $match: {
+                        status: { $ne: 'PAID' },
+                    },
+                },
+                {
+                    $addFields: {
+                        outstandingAmount: {
+                            $subtract: ['$totalAmount', '$paidAmount'],
+                        },
+                        isOverdue: {
+                            $lt: ['$dueDate', asOfDate],
+                        },
+                        daysOverdue: {
+                            $cond: {
+                                if: { $lt: ['$dueDate', asOfDate] },
+                                then: {
+                                    $dateDiff: {
+                                        startDate: '$dueDate',
+                                        endDate: asOfDate,
+                                        unit: 'day',
+                                    },
+                                },
+                                else: 0,
+                            },
+                        },
+                    },
+                },
+                {
+                    $match: {
+                        outstandingAmount: { $gt: 0.01 },
+                    },
+                },
+                // 2. Определяем бакеты
+                {
+                    $addFields: {
+                        agingBucket: {
+                            $switch: {
+                                branches: [
+                                    {
+                                        case: { $not: '$isOverdue' },
+                                        then: 'Current',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 30] },
+                                        then: '1-30',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 60] },
+                                        then: '31-60',
+                                    },
+                                    {
+                                        case: { $lte: ['$daysOverdue', 90] },
+                                        then: '61-90',
+                                    },
+                                    {
+                                        case: { $gt: ['$daysOverdue', 90] },
+                                        then: '91+',
+                                    },
+                                ],
+                                default: 'Current',
+                            },
+                        },
+                    },
+                },
+                // 3. Facet для разных группировок
+                {
+                    $facet: {
+                        byAgingBucket: [
+                            {
+                                $group: {
+                                    _id: '$agingBucket',
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        byServiceType: [
+                            {
+                                $group: {
+                                    _id: { $ifNull: ['$serviceType', 'Other'] },
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        byManager: [
+                            {
+                                $group: {
+                                    _id: { $ifNull: ['$manager', 'Unassigned'] },
+                                    amount: { $sum: '$outstandingAmount' },
+                                    count: { $sum: 1 },
+                                },
+                            },
+                        ],
+                        total: [
+                            {
+                                $group: {
+                                    _id: null,
+                                    totalAmount: { $sum: '$outstandingAmount' },
+                                },
+                            },
+                        ],
+                    },
+                },
+            ];
+            const result = await invoice_schema_1.InvoiceModel.aggregate(pipeline).exec();
+            if (!result.length) {
+                return {
+                    byAgingBucket: [],
+                    byServiceType: [],
+                    byManager: [],
+                };
+            }
+            const data = result[0];
+            const totalAmount = data.total.length > 0 ? data.total[0].totalAmount : 0;
+            const processGroup = (groupData, keyName) => {
+                return groupData.map((item) => ({
+                    [keyName]: item._id,
+                    amount: parseFloat(item.amount.toFixed(2)),
+                    count: item.count,
+                    percentage: totalAmount > 0 ? parseFloat(((item.amount / totalAmount) * 100).toFixed(2)) : 0,
+                }));
+            };
+            // Сортировка бакетов
+            const bucketOrder = ['Current', '1-30', '31-60', '61-90', '91+'];
+            const byAgingBucket = processGroup(data.byAgingBucket, 'bucket').sort((a, b) => {
+                return bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket);
+            });
+            return {
+                byAgingBucket: byAgingBucket,
+                byServiceType: processGroup(data.byServiceType, 'serviceType').sort((a, b) => b.amount - a.amount),
+                byManager: processGroup(data.byManager, 'manager').sort((a, b) => b.amount - a.amount),
+            };
+        }
+        catch (error) {
+            console.error('Error getting receivables structure:', error);
+            throw new AppError_1.AppError('Ошибка при получении структуры задолженности', 500);
         }
     }
 };

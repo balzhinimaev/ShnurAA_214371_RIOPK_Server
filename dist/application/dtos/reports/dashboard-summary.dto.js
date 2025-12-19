@@ -74,6 +74,95 @@ __decorate([
     __metadata("design:type", Number)
 ], AgingBucketDto.prototype, "count", void 0);
 /**
+ * Сводка по категориям для рекомендаций
+ */
+class RecommendationsCategorySummaryDto {
+    constructor() {
+        Object.defineProperty(this, "count", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "totalAmount", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+    }
+}
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], RecommendationsCategorySummaryDto.prototype, "count", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    __metadata("design:type", Number)
+], RecommendationsCategorySummaryDto.prototype, "totalAmount", void 0);
+/**
+ * Сводка рекомендаций по категориям для dashboard
+ */
+class RecommendationsSummaryForDashboardDto {
+    constructor() {
+        Object.defineProperty(this, "NOT_DUE", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "NOTIFY", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "CLAIM", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "COURT", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "BAD_DEBT", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+    }
+}
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsCategorySummaryDto),
+    __metadata("design:type", RecommendationsCategorySummaryDto)
+], RecommendationsSummaryForDashboardDto.prototype, "NOT_DUE", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsCategorySummaryDto),
+    __metadata("design:type", RecommendationsCategorySummaryDto)
+], RecommendationsSummaryForDashboardDto.prototype, "NOTIFY", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsCategorySummaryDto),
+    __metadata("design:type", RecommendationsCategorySummaryDto)
+], RecommendationsSummaryForDashboardDto.prototype, "CLAIM", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsCategorySummaryDto),
+    __metadata("design:type", RecommendationsCategorySummaryDto)
+], RecommendationsSummaryForDashboardDto.prototype, "COURT", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsCategorySummaryDto),
+    __metadata("design:type", RecommendationsCategorySummaryDto)
+], RecommendationsSummaryForDashboardDto.prototype, "BAD_DEBT", void 0);
+/**
  * @openapi
  * components:
  *   schemas:
@@ -252,6 +341,12 @@ class DashboardSummaryDto {
             writable: true,
             value: void 0
         }); // Процент просроченных платежей
+        Object.defineProperty(this, "recommendationsSummary", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        }); // Сводка по категориям рекомендаций
     }
 }
 exports.DashboardSummaryDto = DashboardSummaryDto;
@@ -312,4 +407,9 @@ __decorate([
     (0, class_transformer_1.Expose)(),
     __metadata("design:type", Number)
 ], DashboardSummaryDto.prototype, "overduePaymentsPercentage", void 0);
+__decorate([
+    (0, class_transformer_1.Expose)(),
+    (0, class_transformer_1.Type)(() => RecommendationsSummaryForDashboardDto),
+    __metadata("design:type", RecommendationsSummaryForDashboardDto)
+], DashboardSummaryDto.prototype, "recommendationsSummary", void 0);
 //# sourceMappingURL=dashboard-summary.dto.js.map

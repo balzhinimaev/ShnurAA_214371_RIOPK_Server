@@ -18,6 +18,7 @@ const tsyringe_1 = require("tsyringe");
 const IInvoiceRepository_1 = require("../../../domain/repositories/IInvoiceRepository");
 const dashboard_summary_dto_1 = require("../../dtos/reports/dashboard-summary.dto");
 const class_transformer_1 = require("class-transformer");
+const overdue_category_enum_1 = require("../../../domain/enums/overdue-category.enum");
 let GetDashboardSummaryUseCase = class GetDashboardSummaryUseCase {
     constructor(invoiceRepository) {
         Object.defineProperty(this, "invoiceRepository", {
@@ -29,10 +30,62 @@ let GetDashboardSummaryUseCase = class GetDashboardSummaryUseCase {
     }
     async execute() {
         const summaryData = await this.invoiceRepository.getDashboardSummary();
-        const summaryDto = (0, class_transformer_1.plainToInstance)(dashboard_summary_dto_1.DashboardSummaryDto, summaryData, {
-            excludeExtraneousValues: true, // Важно для DTO
+        // Вычисляем recommendationsSummary
+        const recommendationsSummary = await this.calculateRecommendationsSummary();
+        const summaryDto = (0, class_transformer_1.plainToInstance)(dashboard_summary_dto_1.DashboardSummaryDto, {
+            ...summaryData,
+            recommendationsSummary,
+        }, {
+            excludeExtraneousValues: true,
         });
         return summaryDto;
+    }
+    async calculateRecommendationsSummary() {
+        const currentDate = new Date();
+        // Получаем все неоплаченные счета
+        const { invoices: openInvoices } = await this.invoiceRepository.findAll({
+            filters: { status: 'OPEN' },
+            limit: 10000,
+            offset: 0,
+        });
+        const { invoices: overdueInvoices } = await this.invoiceRepository.findAll({
+            filters: { status: 'OVERDUE' },
+            limit: 10000,
+            offset: 0,
+        });
+        const allInvoices = [...openInvoices, ...overdueInvoices];
+        // Инициализируем статистику
+        const byCategory = {
+            [overdue_category_enum_1.OverdueCategory.NOT_DUE]: { count: 0, totalAmount: 0 },
+            [overdue_category_enum_1.OverdueCategory.NOTIFY]: { count: 0, totalAmount: 0 },
+            [overdue_category_enum_1.OverdueCategory.CLAIM]: { count: 0, totalAmount: 0 },
+            [overdue_category_enum_1.OverdueCategory.COURT]: { count: 0, totalAmount: 0 },
+            [overdue_category_enum_1.OverdueCategory.BAD_DEBT]: { count: 0, totalAmount: 0 },
+        };
+        // Обрабатываем каждый счет
+        for (const invoice of allInvoices) {
+            const outstandingAmount = invoice.outstandingAmount;
+            if (outstandingAmount <= 0)
+                continue;
+            // Вычисляем дни просрочки
+            const dueDate = new Date(invoice.dueDate);
+            const diffMs = currentDate.getTime() - dueDate.getTime();
+            const daysOverdue = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            const category = (0, overdue_category_enum_1.getOverdueCategory)(daysOverdue);
+            byCategory[category].count++;
+            byCategory[category].totalAmount += outstandingAmount;
+        }
+        // Округляем суммы
+        Object.values(byCategory).forEach(stats => {
+            stats.totalAmount = Math.round(stats.totalAmount * 100) / 100;
+        });
+        return {
+            NOT_DUE: byCategory[overdue_category_enum_1.OverdueCategory.NOT_DUE],
+            NOTIFY: byCategory[overdue_category_enum_1.OverdueCategory.NOTIFY],
+            CLAIM: byCategory[overdue_category_enum_1.OverdueCategory.CLAIM],
+            COURT: byCategory[overdue_category_enum_1.OverdueCategory.COURT],
+            BAD_DEBT: byCategory[overdue_category_enum_1.OverdueCategory.BAD_DEBT],
+        };
     }
 };
 exports.GetDashboardSummaryUseCase = GetDashboardSummaryUseCase;

@@ -1,7 +1,7 @@
 // src/application/dtos/reports/invoice-response.dto.ts
 import { Expose, Type } from 'class-transformer';
 import { OverdueCategory } from '../../../domain/enums/overdue-category.enum';
-import { DueStatus, Payment } from '../../../domain/types/payment.types';
+import { DueStatus } from '../../../domain/types/payment.types';
 
 /**
  * DTO для информации о платеже

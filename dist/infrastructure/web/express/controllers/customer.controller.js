@@ -5,7 +5,8 @@ const tsyringe_1 = require("tsyringe");
 const class_transformer_1 = require("class-transformer");
 const class_validator_1 = require("class-validator");
 const list_customers_use_case_1 = require("../../../../application/use-cases/customers/list-customers.use-case");
-const get_customer_by_id_use_case_1 = require("../../../../application/use-cases/customers/get-customer-by-id.use-case"); // Импортируем новый UseCase
+const get_customer_by_id_use_case_1 = require("../../../../application/use-cases/customers/get-customer-by-id.use-case");
+const get_customer_full_use_case_1 = require("../../../../application/use-cases/customers/get-customer-full.use-case");
 const update_customer_use_case_1 = require("../../../../application/use-cases/customers/update-customer.use-case");
 const delete_customer_use_case_1 = require("../../../../application/use-cases/customers/delete-customer.use-case");
 const update_customer_dto_1 = require("../../../../application/dtos/customers/update-customer.dto");
@@ -157,6 +158,33 @@ class CustomerController {
         }
         catch (error) {
             console.error('[CustomerController] DELETE /customers/:id - Error:', {
+                customerId: req.params.id,
+                error,
+            });
+            next(error);
+        }
+    }
+    // GET /customers/:id/full
+    async getCustomerFull(req, res, next) {
+        try {
+            const customerId = req.params.id;
+            console.log('[CustomerController] GET /customers/:id/full - Request:', {
+                customerId,
+                userId: req.user?.id,
+            });
+            const getCustomerFullUseCase = tsyringe_1.container.resolve(get_customer_full_use_case_1.GetCustomerFullUseCase);
+            const customerFull = await getCustomerFullUseCase.execute(customerId);
+            console.log('[CustomerController] GET /customers/:id/full - Customer found:', {
+                customerId,
+                name: customerFull?.name,
+                invoiceCount: customerFull?.invoices?.length,
+                riskLevel: customerFull?.riskAssessment?.level,
+                paymentGrade: customerFull?.paymentRating?.grade,
+            });
+            res.status(200).json(customerFull);
+        }
+        catch (error) {
+            console.error('[CustomerController] GET /customers/:id/full - Error:', {
                 customerId: req.params.id,
                 error,
             });
